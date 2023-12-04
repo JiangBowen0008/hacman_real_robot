@@ -1,0 +1,18 @@
+parameters:
+  eye_on_hand: false
+  freehand_robot_movement: false
+  move_group: panda_arm
+  move_group_namespace: /
+  namespace: /k4a_0_eye_on_base/
+  robot_base_frame: panda_link0
+  robot_effector_frame: panda_link8
+  tracking_base_frame: k4a_0/camera_base
+  tracking_marker_frame: aruco_581
+transformation:
+  qw: -0.6307067230623503
+  qx: -0.2720638030317658
+  qy: -0.28528904316845877
+  qz: 0.668431356544462
+  x: 0.5344033817001
+  y: 0.14789637102161457
+  z: 0.47945322168637744

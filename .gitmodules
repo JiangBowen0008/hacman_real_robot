@@ -1,0 +1,6 @@
+[submodule "deoxys_control"]
+	path = deoxys_control
+	url = https://github.com/JiangBowen0008/deoxys_control.git
+[submodule "protobuf"]
+	path = protobuf
+	url = https://github.com/protocolbuffers/protobuf.git
