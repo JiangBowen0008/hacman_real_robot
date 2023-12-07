@@ -19,7 +19,7 @@ def load_camera_transforms(param_dir, param_files):
         # Convert to transformation matrix
         t = [params['x'], params['y'], params['z']]
         q = [params['qx'], params['qy'], params['qz'], params['qw']]
-        rotation = R.from_quat(q).as_matrix()
+        rotation = Rotation.from_quat(q).as_matrix()
         transform = np.eye(4)
         transform[:3, :3] = rotation
         transform[:3, 3] = t
@@ -73,6 +73,8 @@ def capture_pcd(camera_index, clip_distance=1.5e3):
             #     o3d.geometry.Image(capture.depth),
             #     o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.Kinect2DepthCameraDefault)
             # )
+            # pcd = 1e3
+            pcd = pcd.astype(np.float32) / 1e3
             return pcd
         else:
             return None
@@ -80,27 +82,50 @@ def capture_pcd(camera_index, clip_distance=1.5e3):
     except:
         print(f"Failed to capture PCD from camera {camera_index}")
         return None
+    
+def show_pcd(pcd, orig=None, R=None, save=None, grasps=[]):
+    geoms = [pcd]
+    if orig is not None:
+        coords = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.1, origin=orig
+        )
+        if R is not None:
+            coords = coords.rotate(R)
+        geoms.append(coords)
+    for grasp in grasps:
+        coords = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                size=0.05, origin=grasp[:3, 3])
+        coords = coords.rotate(grasp[:3, :3])
+        geoms.append(coords)
+    viz = o3d.visualization.Visualizer()
+    viz.create_window()
+    for geom in geoms:
+        viz.add_geometry(geom)
+    viz.run()
+    if save:
+        viz.capture_screen_image(save, True)
+    viz.destroy_window()
 
 # Main program
 def main():
     # Load all the camera transforms
-    # camera_param_dir = 'pcd_env/camera_params'
-    # camera_params_files = {
-    #     # 0: 'k4a_0_eye_on_base_snapped.yaml',
-    #     # 1: 'k4a_1_eye_on_base_snapped.yaml',
-    #     # 1: 'k4a_1_eye_on_base.yaml',
-    #     # 2: 'k4a_2_eye_on_base_snapped.yaml',
-    #     # 3: 'k4a_3_eye_on_base_snapped.yaml'
-    # }
-    camera_param_dir = 'pcd_env/calibration/calibration_results'
+    camera_param_dir = 'pcd_env/camera_params'
     camera_params_files = {
         # 0: 'k4a_0_eye_on_base_snapped.yaml',
-        1: 'cam1_calibration.npz',
+        1: 'k4a_1_eye_on_base_snapped.yaml',
         # 1: 'k4a_1_eye_on_base.yaml',
         # 2: 'k4a_2_eye_on_base_snapped.yaml',
         # 3: 'k4a_3_eye_on_base_snapped.yaml'
     }
-    camera_transforms = load_camera_transforms_new(camera_param_dir, camera_params_files)
+    # camera_param_dir = 'pcd_env/calibration/calibration_results'
+    # camera_params_files = {
+    #     # 0: 'k4a_0_eye_on_base_snapped.yaml',
+    #     1: 'cam1_calibration.npz',
+    #     # 1: 'k4a_1_eye_on_base.yaml',
+    #     # 2: 'k4a_2_eye_on_base_snapped.yaml',
+    #     # 3: 'k4a_3_eye_on_base_snapped.yaml'
+    # }
+    camera_transforms = load_camera_transforms(camera_param_dir, camera_params_files)
 
     combined_pcd = o3d.geometry.PointCloud()
 
@@ -110,18 +135,30 @@ def main():
             transform = camera_transforms[cam_id]
             # pcd = apply_transform(pcd.T, transform).T
             pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd))
-            # transform = np.linalg.inv(transform)
-            print(transform)
+            transform = np.linalg.inv(transform)
+            # print(transform)
             pcd = pcd.transform(transform)
 
             # Color the point cloud
             color = np.random.rand(3)
-            pcd.paint_uniform_color(color)
+            # pcd.paint_uniform_color(color)
             combined_pcd += pcd
+    
 
     # Save or visualize the combined PCD, with coordinate frame at the origin
-    coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=200)
-    o3d.visualization.draw_geometries([combined_pcd, coord])
+    transformed_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=0.1,
+        origin=transform[:3, 3])
+    transformed_coord = transformed_coord.rotate(transform[:3, :3])
+    coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+    o3d.visualization.draw_geometries([
+        combined_pcd,
+        coord,
+        # x_axis,
+        # y_axis,
+        # z_axis
+        transformed_coord
+        ])
     # o3d.io.write_point_cloud("combined_pcd.ply", combined_pcd)
     # o3d.visualization.draw_geometries([combined_pcd])
 
