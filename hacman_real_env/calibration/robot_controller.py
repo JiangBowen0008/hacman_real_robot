@@ -148,14 +148,66 @@ class FrankaOSCController():
 '''
 Test program
 '''
+def estimate_tag_pose(finger_pose):
+    """
+    Estimate the tag pose given the gripper pose by applying the gripper-to-tag transformation.
+
+    Args:
+        finger_pose (eef_pose): 4x4 transformation matrix from gripper to robot base
+    Returns:
+        hand_pose: 4x4 transformation matrix from hand to robot base
+        tag_pose: 4x4 transformation matrix from tag to robot base
+    """
+    from scipy.spatial.transform import Rotation
+
+    # Estimate the hand pose
+    # finger_to_hand obtained from the product manual: 
+    # [https://download.franka.de/documents/220010_Product%20Manual_Franka%20Hand_1.2_EN.pdf]
+    finger_to_hand = np.array([
+        [0.707,  0.707, 0, 0],
+        [-0.707, 0.707, 0, 0],
+        [0, 0, 1, 0.1034],
+        [0, 0, 0, 1],
+    ])
+    finger_to_hand = np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0.1034],
+        [0, 0, 0, 1],
+    ])
+    hand_to_finger = np.linalg.inv(finger_to_hand)
+    print("hand to finger", hand_to_finger)
+    hand_pose = np.dot(finger_pose, hand_to_finger)
+
+    t_tag_to_hand = np.array([0.048914, 0.0275, 0.00753])
+    # R_tag_to_hand = Rotation.from_quat([0.5, -0.5, 0.5, -0.5])
+    R_tag_to_hand = Rotation.from_quat([0, 0, 0, 1])
+    tag_to_hand = np.eye(4)
+    tag_to_hand[:3, :3] = R_tag_to_hand.as_matrix()
+    tag_to_hand[:3, 3] = t_tag_to_hand
+
+    tag_pose = np.dot(hand_pose, tag_to_hand)
+    
+    return hand_pose, tag_pose
+
 if __name__ == "__main__":
     controller = FrankaOSCController(visualizer=False)
-    controller.reset()
-    controller.move_by(np.array([0, 0, 0]), np.array([0, 0, 0]))
+    # controller.reset()
+    controller.move_by(np.array([0, 0, 0]), np.array([0, 0, 0]), num_steps=10, num_additional_steps=10)
     # init_pos = np.array([0.52560095, -0.28889169, 0.29223859])
     # # init_quat = np.array([1, 0, 0, 0])
     # init_quat = np.array([9.9994910e-01,  1.0066551e-02, -3.4788260e-04,  5.9928966e-04])
     # controller.move_to(init_pos, init_quat)
     # controller.reset()
     logger.debug("Final movement finished")
-    print(controller.robot_interface.last_eef_quat_and_pos)
+    # print(controller.robot_interface.last_q)
+    eef_pose = controller.eef_pose
+    # print(eef_pose)
+    hand_pose, tag_pose = estimate_tag_pose(eef_pose)
+    print(f"eef pos: {eef_pose[:3, 3]}")
+    print(f"hand pos: {hand_pose[:3, 3]}")
+    print(f"Tag pos: {tag_pose[:3, 3]}")
+
+    # Visualize the poses
+
+    # print(controller.robot_interface.last_eef_quat_and_pos)

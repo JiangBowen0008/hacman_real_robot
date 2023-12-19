@@ -9,19 +9,22 @@ def get_kinect_ir_frame(device, visualize=False):
     Capture an IR frame from the Kinect camera.
     """
     # Capture an IR frame
-    capture = device.get_capture()
-    if capture.ir is not None:
-        ir_frame = capture.ir
-        ir_frame = np.clip(ir_frame, 0, 5e3) / 5e3  # Clip and normalize
-        # cv2.imshow('IR', ir_frame)
-        if visualize:
-            plt.imshow(ir_frame)
-            plt.show()
-        return ir_frame
+    for _ in range(20):
+        device.get_capture()
+        capture = device.get_capture()
+        if capture is not None:
+            ir_frame = capture.ir
+            ir_frame = np.clip(ir_frame, 0, 5e3) / 5e3  # Clip and normalize
+            # cv2.imshow('IR', ir_frame)
+            if visualize:
+                plt.imshow(ir_frame)
+                plt.show()
+            return ir_frame
     else:
         return None
+    
 
-def detect_aruco_markers(ir_frame, visualize=False):
+def detect_aruco_markers(ir_frame, debug=False):
     """
     Detect ArUco markers in an IR frame and visualize the detection.
     """
@@ -37,11 +40,10 @@ def detect_aruco_markers(ir_frame, visualize=False):
     corners, ids, rejected = detector.detectMarkers(gray)   # top-left, top-right, bottom-right, and bottom-left corners
 
     # Visualize markers
-    if visualize:
-        vis_image = cv2.aruco.drawDetectedMarkers(gray.copy(), corners, ids)
-        cv2.imshow('ArUco Marker Detection', vis_image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    vis_image = cv2.aruco.drawDetectedMarkers(gray.copy(), corners, ids)
+    # cv2.destroyAllWindows()
+    cv2.imshow('ArUco Marker Detection', vis_image)
+    cv2.waitKey(0 if debug else 1)
 
     return corners, ids
 
@@ -74,7 +76,8 @@ def estimate_transformation(corners, ids, camera_matrix, dist_coeffs):
 
 def main():
     # Initialize the camera
-    k4a = PyK4A(device_id=1)
+    cam_id = 3
+    k4a = PyK4A(device_id=cam_id)
     k4a.start()
 
     camera_matrix = k4a.calibration.get_camera_matrix(CalibrationType.DEPTH)
@@ -87,7 +90,7 @@ def main():
 
     if ir_frame is not None:
         # Detect ArUco markers and get visualization
-        corners, ids = detect_aruco_markers(ir_frame)
+        corners, ids = detect_aruco_markers(ir_frame, debug=True)
 
         # Estimate transformation
         if ids is not None and len(ids) > 0:

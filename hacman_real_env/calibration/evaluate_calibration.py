@@ -106,7 +106,7 @@ def solve_hand_eye_calibration(data_filepath, eye_to_hand=True):
         R_target2cam=R_target,
         t_target2cam=t_target,
     )
-    return R, T
+    return R, T    
 
 
 def main():
