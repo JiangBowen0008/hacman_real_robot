@@ -8,7 +8,7 @@ import cv2
 from pyk4a import PyK4A
 from pyk4a.calibration import CalibrationType
 
-from robot_controller import FrankaOSCController
+from hacman_real_env.robot_controller import FrankaOSCController
 from marker_detection import get_kinect_ir_frame, detect_aruco_markers, estimate_transformation
 
 
