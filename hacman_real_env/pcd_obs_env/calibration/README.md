@@ -60,6 +60,12 @@ python hacman_real_env/pcd_obs_env/calibration/solve_calibration.py
 
 This script solves the correspondence between tag in robot base (world frame) and tag in camera frame. The result is the extrinsic matrix we need that transform pcd in the camera
 
+----
+
+### Multi-camera Alignment
+
+If you have multiple cameras and you need to align them together, see `hacman_real_env/pcd_obs_env/debug_pcd_processing.ipynb` for detailed instructions.
+
 
 
 
