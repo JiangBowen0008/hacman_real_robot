@@ -6,6 +6,7 @@ import argparse
 import pickle
 import threading
 import time
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -18,9 +19,9 @@ from deoxys.utils import YamlConfig, transform_utils
 from deoxys.utils.config_utils import (get_default_controller_config,
                                        verify_controller_config)
 from deoxys.utils.input_utils import input2action
-from deoxys.utils.log_utils import get_deoxys_example_logger
+from deoxys.utils.log_utils import get_project_logger
 
-logger = get_deoxys_example_logger()
+logger = get_project_logger()
 
 def compute_errors(pose_1, pose_2):
 
@@ -38,11 +39,20 @@ class FrankaOSCController():
     def __init__(self,
                  interface_cfg="charmander.yml",
                  controller_type="OSC_POSE",
+                 controller_cfg="hacman_real_env/robot_controller/tuned-osc-yaw-controller.yml",
                  visualizer=False):
         self.robot_interface = FrankaInterface(
             config_root + f"/{interface_cfg}", use_visualizer=visualizer)
+        
+        # Load controller config
         self.controller_type = controller_type
-        self.controller_cfg = get_default_controller_config(controller_type)
+        if controller_cfg is not None:
+            controller_cfg = YamlConfig(controller_cfg).as_easydict()
+            verify_controller_config(controller_cfg)
+        else:
+            controller_cfg = get_default_controller_config(controller_type)
+        self.controller_cfg = controller_cfg
+
         self.reset_joint_positions = [
             -0.5493463,
             0.18639661,
@@ -58,24 +68,45 @@ class FrankaOSCController():
 
     def move_to(self, 
                 target_pos,
-                target_quat,
-                num_steps=80,
-                num_additional_steps=40):
+                target_quat=None,
+                target_delta_axis_angle=None,
+                grasp=True,
+                num_steps=40,
+                num_additional_steps=20):
+        while self.robot_interface.state_buffer_size == 0:
+            logger.warn("Robot state not received")
+            time.sleep(0.5)
+        
+        # Compute target rotation
+        if target_quat is not None:
+            pass
+        elif target_delta_axis_angle is not None:
+            current_axis_angle = self.eef_axis_angle
+            target_axis_angle = current_axis_angle + target_delta_axis_angle
+            target_quat = transform_utils.axisangle2quat(target_axis_angle)
+        else:
+            raise ValueError("Either target_quat or target_delta_axis_angle must be specified")
+        
+        target_pos = target_pos.reshape(3, 1)
         self._osc_move(
             (target_pos, target_quat),
             num_steps,
+            grasp=grasp,
         )
-        self._osc_move(
-            (target_pos, target_quat),
-            num_additional_steps,
-        )
+        if num_additional_steps > 0:
+            self._osc_move(
+                (target_pos, target_quat),
+                num_additional_steps,
+                grasp=grasp,
+            )
         print(f'Target_quat: {target_quat}, target_pos: {target_pos}')
 
     def move_by(self, 
                 target_delta_pos=np.zeros(3), 
                 target_delta_axis_angle=np.zeros(3),
-                num_steps=80,
-                num_additional_steps=40):
+                grasp=True,
+                num_steps=40,
+                num_additional_steps=20):
         while self.robot_interface.state_buffer_size == 0:
             logger.warn("Robot state not received")
             time.sleep(0.5)
@@ -102,12 +133,17 @@ class FrankaOSCController():
 
         start_pose = current_pos.flatten().tolist() + current_quat.flatten().tolist()
 
-        self.move_to(target_pos, target_quat, num_steps, num_additional_steps)
+        self.move_to(target_pos, target_quat, target_delta_axis_angle=None, grasp=grasp, num_steps=num_steps, num_additional_steps=num_additional_steps)
     
-    def _osc_move(self, target_pose, num_steps):
+    def _osc_move(self, target_pose, num_steps, grasp=True, max_delta_pos=None):
         target_pos, target_quat = target_pose
         target_axis_angle = transform_utils.quat2axisangle(target_quat)
         current_rot, current_pos = self.robot_interface.last_eef_rot_and_pos
+        grasp = {
+            None: 0.0,
+            True: 1.0,
+            False: -1.0
+        }[grasp]
 
         for _ in range(num_steps):
             current_pose = self.robot_interface.last_eef_pose
@@ -119,19 +155,33 @@ class FrankaOSCController():
             quat_diff = transform_utils.quat_distance(target_quat, current_quat)
             current_axis_angle = transform_utils.quat2axisangle(current_quat)
             axis_angle_diff = transform_utils.quat2axisangle(quat_diff)
+
+            if max_delta_pos is not None:
+                delta_pos = target_pos - current_pos
+                if np.linalg.norm(delta_pos) > max_delta_pos:
+                    target_pos = current_pos + (delta_pos / np.linalg.norm(delta_pos)) * max_delta_pos
             action_pos = (target_pos - current_pos).flatten() * 10
             action_axis_angle = axis_angle_diff.flatten() * 1
             action_pos = np.clip(action_pos, -1.0, 1.0)
             action_axis_angle = np.clip(action_axis_angle, -0.5, 0.5)
 
-            action = action_pos.tolist() + action_axis_angle.tolist() + [-1.0]
-            logger.info(f"Axis angle action {action_axis_angle.tolist()}")
+            action = action_pos.tolist() + action_axis_angle.tolist() + [grasp]
+            # logger.info(f"Axis angle action {action_axis_angle.tolist()}")
             # print(np.round(action, 2))
             self.robot_interface.control(
                 controller_type=self.controller_type,
                 action=action,
                 controller_cfg=self.controller_cfg,)
         return action
+    
+    def update_controller_config(self, controller_cfg):
+        self.controller_cfg = controller_cfg
+    
+    @property
+    def eef_axis_angle(self):
+        rot = self.eef_rot_and_pos[0]
+        quat = transform_utils.mat2quat(rot)
+        return transform_utils.quat2axisangle(quat)
 
     @property
     def eef_pose(self):
@@ -148,66 +198,51 @@ class FrankaOSCController():
 '''
 Test program
 '''
-def estimate_tag_pose(finger_pose):
-    """
-    Estimate the tag pose given the gripper pose by applying the gripper-to-tag transformation.
-
-    Args:
-        finger_pose (eef_pose): 4x4 transformation matrix from gripper to robot base
-    Returns:
-        hand_pose: 4x4 transformation matrix from hand to robot base
-        tag_pose: 4x4 transformation matrix from tag to robot base
-    """
-    from scipy.spatial.transform import Rotation
-
-    # Estimate the hand pose
-    # finger_to_hand obtained from the product manual: 
-    # [https://download.franka.de/documents/220010_Product%20Manual_Franka%20Hand_1.2_EN.pdf]
-    finger_to_hand = np.array([
-        [0.707,  0.707, 0, 0],
-        [-0.707, 0.707, 0, 0],
-        [0, 0, 1, 0.1034],
-        [0, 0, 0, 1],
-    ])
-    finger_to_hand = np.array([
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [0, 0, 1, 0.1034],
-        [0, 0, 0, 1],
-    ])
-    hand_to_finger = np.linalg.inv(finger_to_hand)
-    print("hand to finger", hand_to_finger)
-    hand_pose = np.dot(finger_pose, hand_to_finger)
-
-    t_tag_to_hand = np.array([0.048914, 0.0275, 0.00753])
-    # R_tag_to_hand = Rotation.from_quat([0.5, -0.5, 0.5, -0.5])
-    R_tag_to_hand = Rotation.from_quat([0, 0, 0, 1])
-    tag_to_hand = np.eye(4)
-    tag_to_hand[:3, :3] = R_tag_to_hand.as_matrix()
-    tag_to_hand[:3, 3] = t_tag_to_hand
-
-    tag_pose = np.dot(hand_pose, tag_to_hand)
-    
-    return hand_pose, tag_pose
 
 if __name__ == "__main__":
-    controller = FrankaOSCController(visualizer=False)
+    controller = FrankaOSCController(
+        controller_type="OSC_POSE",
+        visualizer=False)
     # controller.reset()
-    controller.move_by(np.array([0, 0, 0]), np.array([0, 0, 0]), num_steps=10, num_additional_steps=10)
-    # init_pos = np.array([0.52560095, -0.28889169, 0.29223859])
-    # # init_quat = np.array([1, 0, 0, 0])
-    # init_quat = np.array([9.9994910e-01,  1.0066551e-02, -3.4788260e-04,  5.9928966e-04])
-    # controller.move_to(init_pos, init_quat)
-    # controller.reset()
+    # controller.move_by(np.array([0, 0, -0.01]), np.array([0, 0, 0]), num_steps=40, num_additional_steps=10)
+    # initial_joint_positions = [
+    #     -0.55118707,
+    #     -0.2420445,
+    #     0.01447328,
+    #     -2.28358781,
+    #     -0.0136721,
+    #     2.03815885,
+    #     0.25261351]
+    # reset_joint_positions = [
+    #     0.09162008114028396,
+    #     -0.19826458111314524,
+    #     -0.01990020486871322,
+    #     -2.4732269941140346,
+    #     -0.01307073642274261,
+    #     2.30396583422025,
+    #     0.8480939705504309,
+    # ]
+    # controller.reset(joint_positions=reset_joint_positions)
+    # controller.move_to(np.array([0.45, -0.3, 0.25]), 
+    #                    target_quat=np.array([ 0.7071068, -0.7071068, 0, 0 ]),
+    #                    target_delta_axis_angle=np.array([0, 0, 0]),
+    #                    grasp=False,
+    #                    num_steps=40, num_additional_steps=10)
+    controller.move_by(np.array([0, 0, -0.0]),
+                       np.array([0, 0, 0]),
+                       grasp=True,
+                       num_steps=40, num_additional_steps=10)
     logger.debug("Final movement finished")
     # print(controller.robot_interface.last_q)
     eef_pose = controller.eef_pose
+    joint_positions = controller.robot_interface.last_q
     # print(eef_pose)
-    hand_pose, tag_pose = estimate_tag_pose(eef_pose)
+    # hand_pose, tag_pose = estimate_tag_pose(eef_pose)
     print(f"eef pos: {eef_pose[:3, 3]}")
-    print(f"hand pos: {hand_pose[:3, 3]}")
-    print(f"Tag pos: {tag_pose[:3, 3]}")
+    # print(f"hand pos: {hand_pose[:3, 3]}")
+    # print(f"Tag pos: {tag_pose[:3, 3]}")
 
+    print(f"Joint positions: {joint_positions}")
     # Visualize the poses
 
     # print(controller.robot_interface.last_eef_quat_and_pos)

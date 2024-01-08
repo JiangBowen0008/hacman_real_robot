@@ -6,6 +6,8 @@ from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
+import time
 
 from pyk4a import PyK4A
 
@@ -20,8 +22,15 @@ class PCDObsEnv:
         voxel_size (float): voxel size for downsampling
         clip_distance (float): clip points farther than this distance
     """
+    camera_colors = {
+        0: [1, 0.706, 0],
+        1: [0, 0.651, 0.929],
+        2: [0.651, 0, 0.929],
+        3: [0.929, 0.651, 0],
+    }   # Colors for pcd of each camera
+
     def __init__(self, 
-                 camera_indices=[0, 2, 3],
+                 camera_indices=[0,2,3],
                  camera_param_dir=None,
                  camera_alignments=None, 
                  voxel_size=0.005,
@@ -47,32 +56,57 @@ class PCDObsEnv:
             camera_alignments = os.path.join(curr_dir, 'calibration/finetune_results/camera_alignments.npz')
         self.camera_alignments = load_camera_alignments(camera_alignments)
 
-        # Start all the cameras
+        # Start all the cameras in parallel, I/O bound
         self.k4as = {}
-        for cam_id in camera_indices:
-            try:
-                k4a = PyK4A(device_id=cam_id)
-                k4a.start()
-                self.k4as[cam_id] = k4a
-                print(f"Started camera {cam_id}")
-            except:
-                print(f"Failed to start camera {cam_id}")
+        with ThreadPoolExecutor() as executor:
+            executor.map(self.start_camera, camera_indices)
     
-    def get_pcd(self):
+    def start_camera(self, cam_id):
+        try:
+            k4a = PyK4A(device_id=cam_id)
+            k4a.start()
+            self.k4as[cam_id] = k4a
+            print(f"Started camera {cam_id}")
+        except:
+            print(f"Failed to start camera {cam_id}")
+    
+    def get_pcd(self, return_numpy=True):
         """
-        Get the point cloud from all the cameras.
+        Get the point cloud from all the cameras. Perform voxel downsampling.
         """
+        start_time = time.time()
+        # Obtain pcds from all cameras in parallel, CPU bound
         pcds = []
         for cam_id in self.camera_indices:
             pcd = self.get_single_pcd(cam_id)
-            color = np.random.rand(3)
-            pcd.paint_uniform_color(color)
+            
             if pcd is not None:
                 pcds.append(pcd)
-            
+        
+        # Combine all pcds
         combined_pcd = o3d.geometry.PointCloud()
         for pcd in pcds:
             combined_pcd += pcd
+        end_time = time.time()
+        print(f"Obtaining pcds takes {end_time - start_time:.3f}s.")
+
+        # Voxel downsample
+        combined_pcd = combined_pcd.voxel_down_sample(self.voxel_size)
+        
+        # Clip to the real table
+        # table_x_boundary = [0.1, 0.85]
+        # table_y_boundary = [-0.85, 0.25]
+        # combined_pcd = combined_pcd.crop(
+        #     o3d.geometry.AxisAlignedBoundingBox(
+        #         min_bound=np.array([table_x_boundary[0], table_y_boundary[0], -np.inf]),
+        #         max_bound=np.array([table_x_boundary[1], table_y_boundary[1], np.inf])
+        #     )
+        # )
+        
+        # Convert back to np array
+        if return_numpy:
+            combined_pcd = np.asarray(combined_pcd.points)
+
         return combined_pcd
     
     def get_single_raw_pcd(self, cam_id):
@@ -110,7 +144,9 @@ class PCDObsEnv:
             - remove outliers
             - estimate normals
         """
+        start_time = time.time()
         pcd = self.get_single_raw_pcd(cam_id)
+        end_time = time.time()
         if pcd is not None:
             # Transform to base frame
             transform = self.camera_transforms[cam_id]
@@ -132,14 +168,14 @@ class PCDObsEnv:
             radius = 0.02
             nb_points = int(((radius / self.voxel_size) ** 2) * 0.8) 
             pcd_down, _ = pcd_down.remove_radius_outlier(nb_points=nb_points, radius=radius)
-
-            # Estimate normals
-            radius_normal = self.voxel_size * 4
-            pcd_down.estimate_normals(
-                o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
+            
+            pcd.paint_uniform_color(self.camera_colors[cam_id])
+            end_time2 = time.time()
+            print(f"Cam {cam_id}. Capture takes {end_time - start_time:.3f}s. Processing takes {end_time2 - end_time:.3f}s.")
             return pcd_down
         else:
             return None
+        
     
     def get_camera_coord(self, cam_id):
         """
@@ -157,20 +193,12 @@ class PCDObsEnv:
         coords = [self.get_camera_coord(cam_id) for cam_id in self.camera_indices]
         return coords
     
-    def compose_transform(self, base_transforms, additional_transforms):
-        """
-        Compose the base transforms with the additional transforms.
-        """
-        new_transforms = deepcopy(base_transforms)
-        for cam_id, transform in additional_transforms.items():
-            new_transforms[cam_id] = new_transforms[cam_id] @ transform
-        return new_transforms
-    
     def visualize(self):
         """
         Visualize the point cloud from all the cameras.
         """
-        combined_pcd = self.get_pcd()
+        combined_pcd = self.get_pcd(return_numpy=False)
+        combined_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
         camera_coords = self.get_camera_coords()
         base_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
         o3d.visualization.draw_geometries([
@@ -206,8 +234,9 @@ def load_camera_alignments(path):
         print(f"Loaded camera alignment for cameras {list(alignments.keys())}")    
     return alignments
 
-# Function to load camera parameters and convert to transformation matrix
+# DEPRECATED
 def load_camera_transforms_old(param_dir, param_files):
+    Warning("Using deprecated function load_camera_transforms_old")
     t_depth_to_cam_base = np.array([0, 0, 0.0018])
     q_depth_to_cam_base = np.array([0.52548, -0.52548, 0.47315, -0.47315])
     T_depth_to_cam_base = np.eye(4)
@@ -239,7 +268,7 @@ def load_camera_transforms_old(param_dir, param_files):
 
 # Main program
 def main():
-    env = PCDObsEnv(camera_indices=[0, 2, 3])
+    env = PCDObsEnv()
     env.visualize()
 
 if __name__ == "__main__":
