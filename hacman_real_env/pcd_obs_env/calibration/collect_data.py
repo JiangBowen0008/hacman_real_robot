@@ -58,25 +58,26 @@ def move_robot_and_record_data(
                         gripper_pose,       # gripper pose in base
                         transform_matrix    # tag pose in camera
                     ))
-                
+        else:
+            print("\033[91m" + "No IR frame captured." + "\033[0m")
     
     print(f"Recorded {len(data)} data points.")
     # Save data
-    os.makedirs("pcd_env/calibration/data", exist_ok=True)
-    filepath = f"pcd_env/calibration/data/cam{cam_id}_data.pkl"
-    with open(f"pcd_env/calibration/data/cam{cam_id}_data.pkl", "wb") as f:
+    os.makedirs("hacman_real_env/pcd_obs_env/calibration/data", exist_ok=True)
+    filepath = f"hacman_real_env/pcd_obs_env/calibration/data/cam{cam_id}_data.pkl"
+    with open(f"hacman_real_env/pcd_obs_env/calibration/data/cam{cam_id}_data.pkl", "wb") as f:
         pickle.dump(data, f)
     return filepath
 
 def main():
     cam_id = 0
-    # 0: left -     000059793712
-    # 1: right -    000003493812
+    # 0: right -     000003493812
+    # 1: left -     000880595012
     # 2: front -    000180921812
     # 3: back -     000263392612
     initial_joint_positions = {
-        0: [-0.68299696, 0.65603606, 0.07339937, -1.45441668, -0.06963243, 2.11292397, 1.73479704],
-        1: [-0.74697406, 0.15221428, 0.47367525, -2.34519478, 0.14010332, 2.45179711, -1.2359939 ],
+        0: [-0.70556419, 0.33820318, 0.29427356, -2.05766904, 0.56290124, 1.89085646, -1.58229465],
+        1: [-0.68299696, 0.65603606, 0.07339937, -1.45441668, -0.06963243, 2.11292397, 1.73479704],
         2: [-0.57259571, 0.54167994, 0.07167276, -1.70355534, -0.01052658, 2.23024466, 0.28936683],
         3: [-0.57346419, 0.39241199, 0.04834748, -2.25460585, 0.61730919, 3.71824636, 1.5602955]
     }[cam_id]

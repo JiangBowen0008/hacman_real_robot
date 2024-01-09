@@ -126,7 +126,7 @@ def solve_extrinsic(gripper_poses, target_poses_in_camera, eye_to_hand=True):
 
 if __name__ == "__main__":
     # Load data
-    cam_id = 3
+    cam_id = 0
     data_filepath = f"pcd_env/calibration/data/cam{cam_id}_data.pkl"
     with open(data_filepath, "rb") as f:
         data = pickle.load(f)

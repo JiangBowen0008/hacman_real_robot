@@ -1,4 +1,5 @@
 import cv2
+import os, time
 import numpy as np
 from pyk4a import PyK4A
 from pyk4a.calibration import CalibrationType
@@ -10,17 +11,22 @@ def get_kinect_ir_frame(device, visualize=False):
     """
     # Capture an IR frame
     for _ in range(20):
-        device.get_capture()
-        capture = device.get_capture()
-        if capture is not None:
-            ir_frame = capture.ir
-            ir_frame = np.clip(ir_frame, 0, 5e3) / 5e3  # Clip and normalize
-            # cv2.imshow('IR', ir_frame)
-            if visualize:
-                plt.imshow(ir_frame)
-                plt.show()
-            return ir_frame
+        try:
+            device.get_capture()
+            capture = device.get_capture()
+            if capture is not None:
+                ir_frame = capture.ir
+                ir_frame = np.clip(ir_frame, 0, 5e3) / 5e3  # Clip and normalize
+                # cv2.imshow('IR', ir_frame)
+                if visualize:
+                    plt.imshow(ir_frame)
+                    plt.show()
+                return ir_frame
+        except:
+            time.sleep(0.1)
+            print("Failed to capture IR frame.")
     else:
+        print("Failed to capture IR frame after 20 attempts.")
         return None
     
 
