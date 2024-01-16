@@ -16,3 +16,9 @@ sudo ldconfig
 echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
+
+# Launching NUC control
+cd deoxys_control/deoxys/
+./auto_scripts/auto_arm.sh config/charmander.yml
+cd deoxys_control/deoxys/
+./auto_scripts/auto_gripper.sh config/charmander.yml
