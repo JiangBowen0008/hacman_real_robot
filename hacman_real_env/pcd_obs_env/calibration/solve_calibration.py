@@ -125,9 +125,13 @@ def solve_extrinsic(gripper_poses, target_poses_in_camera, eye_to_hand=True):
 
 
 if __name__ == "__main__":
+    filepath = os.path.abspath(__file__)
+    dirpath = os.path.dirname(filepath)
+
     # Load data
     cam_id = 0
-    data_filepath = f"pcd_env/calibration/data/cam{cam_id}_data.pkl"
+    data_dirname = os.path.join(dirpath, "data")
+    data_filepath = os.path.join(data_dirname, f"cam{cam_id}_data.pkl")
     with open(data_filepath, "rb") as f:
         data = pickle.load(f)
     gripper_poses, target_poses_in_camera = zip(*data) 
@@ -135,7 +139,8 @@ if __name__ == "__main__":
     # Solve the extrinsic calibration
     T = solve_extrinsic(gripper_poses, target_poses_in_camera)
 
-    # # Save the calibration
-    os.makedirs("pcd_env/calibration/calibration_results", exist_ok=True)
-    filepath = f"pcd_env/calibration/calibration_results/cam{cam_id}_calibration.npz"
+    # Save the calibration
+    calib_dirname = os.path.join(dirpath, "calibration_results")
+    os.makedirs(calib_dirname, exist_ok=True)
+    filepath = os.path.join(calib_dirname, f"cam{cam_id}_calibration.npz")
     np.savez(filepath, T=T)

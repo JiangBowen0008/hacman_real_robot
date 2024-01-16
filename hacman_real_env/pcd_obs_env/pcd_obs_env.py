@@ -1,13 +1,15 @@
 import numpy as np
 import os
 import yaml
+import time
 import open3d as o3d
 from scipy.spatial.transform import Rotation
-import matplotlib.pyplot as plt
 from collections import defaultdict
 from copy import deepcopy
+import cv2
 from concurrent.futures import ThreadPoolExecutor
-import time
+import threading
+import matplotlib.pyplot as plt
 
 from pyk4a import PyK4A
 
@@ -30,7 +32,7 @@ class PCDObsEnv:
     }   # Colors for pcd of each camera
 
     def __init__(self, 
-                 camera_indices=[0,2,3],
+                 camera_indices=[0,1,2,3],
                  camera_param_dir=None,
                  camera_alignments=None, 
                  voxel_size=0.005,
@@ -45,6 +47,7 @@ class PCDObsEnv:
             camera_param_dir = os.path.join(curr_dir, 'calibration/calibration_results')
         camera_params_files = {
             0: 'cam0_calibration.npz',
+            1: 'cam1_calibration.npz',
             2: 'cam2_calibration.npz',
             3: 'cam3_calibration.npz',
         }
@@ -68,9 +71,9 @@ class PCDObsEnv:
             self.k4as[cam_id] = k4a
             print(f"Started camera {cam_id}")
         except:
-            print(f"Failed to start camera {cam_id}")
+            print(f"Failed to start camera {cam_id}")       
     
-    def get_pcd(self, return_numpy=True):
+    def get_pcd(self, return_numpy=True, clip_table=True):
         """
         Get the point cloud from all the cameras. Perform voxel downsampling.
         """
@@ -89,19 +92,26 @@ class PCDObsEnv:
             combined_pcd += pcd
         end_time = time.time()
         print(f"Obtaining pcds takes {end_time - start_time:.3f}s.")
+        
+        # Clip to the real table
+        if clip_table:
+            table_x_boundary = [0.1, 0.85]
+            table_y_boundary = [-0.85, 0.25]
+            combined_pcd = combined_pcd.crop(
+                o3d.geometry.AxisAlignedBoundingBox(
+                    min_bound=np.array([table_x_boundary[0], table_y_boundary[0], -np.inf]),
+                    max_bound=np.array([table_x_boundary[1], table_y_boundary[1], np.inf])
+                )
+            )
+        
+        # Remove outliers
+        combined_pcd = combined_pcd.voxel_down_sample(0.005)
+        down_pcd, idx = combined_pcd.remove_statistical_outlier(nb_neighbors=30, std_ratio=0.1)
+        # display_inlier_outlier(combined_pcd, idx)
+        combined_pcd = down_pcd
 
         # Voxel downsample
         combined_pcd = combined_pcd.voxel_down_sample(self.voxel_size)
-        
-        # Clip to the real table
-        # table_x_boundary = [0.1, 0.85]
-        # table_y_boundary = [-0.85, 0.25]
-        # combined_pcd = combined_pcd.crop(
-        #     o3d.geometry.AxisAlignedBoundingBox(
-        #         min_bound=np.array([table_x_boundary[0], table_y_boundary[0], -np.inf]),
-        #         max_bound=np.array([table_x_boundary[1], table_y_boundary[1], np.inf])
-        #     )
-        # )
         
         # Convert back to np array
         if return_numpy:
@@ -162,20 +172,20 @@ class PCDObsEnv:
             pcd_down = pcd.select_by_index(pcd_down_mask)
 
             # Voxel downsample
-            pcd_down = pcd_down.voxel_down_sample(self.voxel_size)
+            voxel_size = 0.005  # For initial processing we use 0.5cm
+            pcd_down = pcd_down.voxel_down_sample(voxel_size)
 
             # Remove outliers
             radius = 0.02
-            nb_points = int(((radius / self.voxel_size) ** 2) * 0.8) 
+            nb_points = int(((radius / voxel_size) ** 2) * 0.95) 
             pcd_down, _ = pcd_down.remove_radius_outlier(nb_points=nb_points, radius=radius)
-            
+
             pcd.paint_uniform_color(self.camera_colors[cam_id])
             end_time2 = time.time()
             print(f"Cam {cam_id}. Capture takes {end_time - start_time:.3f}s. Processing takes {end_time2 - end_time:.3f}s.")
             return pcd_down
         else:
             return None
-        
     
     def get_camera_coord(self, cam_id):
         """
@@ -193,11 +203,11 @@ class PCDObsEnv:
         coords = [self.get_camera_coord(cam_id) for cam_id in self.camera_indices]
         return coords
     
-    def visualize(self):
+    def visualize(self, clip_table=True):
         """
         Visualize the point cloud from all the cameras.
         """
-        combined_pcd = self.get_pcd(return_numpy=False)
+        combined_pcd = self.get_pcd(return_numpy=False, clip_table=clip_table)
         combined_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
         camera_coords = self.get_camera_coords()
         base_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
@@ -206,6 +216,78 @@ class PCDObsEnv:
             base_coord,
             *camera_coords
             ])
+    
+    def start_video_record(self, cam_id=2):
+        """
+        Start a non-blocking thread that records RGB video from a camera. FPS is 30.
+        """
+        self.video_record_cam_id = cam_id
+        self.video_frames = []
+        self.recording = True
+        self.record_thread = threading.Thread(target=self._record_video)
+        self.record_thread.start()
+
+    def _record_video(self):
+        """
+        Internal method to record video from the camera in a separate thread.
+        """
+        k4a = self.k4as[self.video_record_cam_id]
+        
+        # Start the camera and recording process
+        while self.recording:
+            try:
+                capture = k4a.get_capture()
+                assert capture.color is not None
+                frame = deepcopy(capture.color)
+                self.video_frames.append(frame)
+            except:
+                print(f"Failed to record RGB frame from {self.video_record_cam_id}")
+                return None
+
+    def end_video_record(self):
+        """
+        End the video recording thread and return the recorded frames.
+        Return:
+            frames: list of rgb frames. FPS is 30. 
+        
+        Note: Color format is in BGR. Can be converted into RGB using cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).
+        """
+        # Stop recording and wait for the thread to finish
+        self.recording = False
+        self.record_thread.join()
+
+        # Cleanup and prepare the frames to return
+        del self.video_record_cam_id
+        frames = deepcopy(self.video_frames)
+        return frames
+    
+    def record_img(self, cam_id=2):
+        """
+        Record a single image from a camera.
+        """
+        k4a = self.k4as[cam_id]
+        try:
+            capture = k4a.get_capture()
+            assert capture.color is not None
+            img = deepcopy(capture.color)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            return img
+        except:
+            print(f"Failed to record RGB frame from {cam_id}")
+            return None
+
+def display_inlier_outlier(cloud, ind):
+    # Compute normals to help visualize
+    # cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+
+    inlier_cloud = cloud.select_by_index(ind)
+    inlier_cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    outlier_cloud = cloud.select_by_index(ind, invert=True)
+
+    print("Showing outliers (red) and inliers (gray): ")
+    outlier_cloud.paint_uniform_color([1, 0, 0])
+    inlier_cloud.paint_uniform_color([0.8, 0.8, 0.8])
+    o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
 def load_camera_transforms(param_dir, param_files):
     """Load the npz files containing the camera transforms"""
@@ -266,10 +348,39 @@ def load_camera_transforms_old(param_dir, param_files):
 
     return camera_transforms
 
+def save_video(frames):
+    """Utility function to save the recorded video to a file."""
+    import cv2
+    import time
+    import imageio
+
+    # Define the codec and create VideoWriter object
+    video_path = "test_video.mp4"
+    writer = imageio.get_writer(video_path, fps=30) 
+
+    for i, frame in enumerate(frames):
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        writer.append_data(frame)
+
+        # import matplotlib.pyplot as plt
+
+        # # Also save the frames as pngs
+        # frame_path = f"test_video/test_video_{i}.png"
+        # cv2.imwrite(frame_path, frame)
+
+    writer.close()
+
+
 # Main program
 def main():
-    env = PCDObsEnv()
+    env = PCDObsEnv(voxel_size=0.01)
     env.visualize()
+
+    # Test camera recording
+    # env.start_video_record(cam_id=2)
+    # time.sleep(3)
+    # frames = env.end_video_record()
+    # save_video(frames)
 
 if __name__ == "__main__":
     main()
