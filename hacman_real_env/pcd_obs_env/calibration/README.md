@@ -13,11 +13,11 @@ pip install -e .
 
 **Note about compatibility with different setups:**
 
-1. We mostly just need the robot_controller class in the `hacman_real_env` package, which is a wrapper around the deoxys controller. However, note that this controller can be switched to other controllers as long as it can move the eef to different poses and read the eef poses.
+1. We mostly just need the robot_controller class in the `hacman_real_env` package, which is a wrapper around the deoxys controller. However, note that this controller can be swapped with other controllers as long as the controller can move the eef to different poses and read the eef poses.
 
-2. In our setup, we used Azure kinect to collect IR image and aruco markers as the calibration target. Both can be modified for different hardware setups.
+2. In our setup, we use Azure kinect to collect IR image and aruco markers as the calibration target. Both can be modified for different hardware setups.
 
-3. this script is created for eye-to-hand calibration, please adjust the pose sampling in the  accordingly for eye-in-hand calibration, which is documented below in details.
+3. This script is created for eye-to-hand calibration, please adjust the pose sampling accordingly for eye-in-hand calibration (see below).
 
 ----
 
