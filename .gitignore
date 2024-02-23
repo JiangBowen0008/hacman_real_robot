@@ -1,5 +1,7 @@
 benchmark_results/
 logs/
+results/
+ckpts/
 
 # Google drive
 credentials.json

@@ -13,9 +13,9 @@ from setuptools import setup, find_packages
 setup(
     name='HACManRealEnv',
     version='0.1dev',
-    packages=find_packages(),
+    packages=['hacman_real_env'],
     # install_requires=required_packages + extra_packages,
     # dependency_links=dependency_links,
     license='MIT License',
-    long_description='Learning Hybrid Actor-Critic Maps for 6D Non-Prehensile Manipulation',
+    long_description='Real env for hacman++',
 )

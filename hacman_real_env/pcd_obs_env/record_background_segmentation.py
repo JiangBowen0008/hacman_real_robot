@@ -3,8 +3,8 @@ import numpy as np
 import os
 import pickle
 
-from pcd_obs_env import PCDObsEnv
-from segmentation import BackgroundGeometry
+from hacman_real_env.pcd_obs_env.pcd_obs_env import PCDObsEnv
+from hacman_real_env.pcd_obs_env.segmentation import BackgroundGeometry
 
 seg_param_dir = os.path.join(os.path.dirname(__file__), 'segmentation_params')
 
@@ -36,7 +36,9 @@ def record_background_points():
     o3d.io.write_point_cloud(pcd_path, pcd)
 
 def parse_background_geometry(pcd, debug=False):
-    background = BackgroundGeometry()
+    background = BackgroundGeometry(
+        param_path=None,
+    )
     background.estimate_params(pcd, debug=debug)
     background.save_params()
 

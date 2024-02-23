@@ -2,29 +2,33 @@ import numpy as np
 import open3d as o3d
 import os
 import pickle
-
-from pcd_obs_env import PCDObsEnv
-from segmentation import BackgroundGeometry
+import imageio
 
 goal_pcd_dir = os.path.join(os.path.dirname(__file__), 'goal_pcds')
 
 def record_object_goals(num_poses=10):
-    obs_env = PCDObsEnv()
+    from hacman_real_env.pcd_obs_env.pcd_obs_env import PCDObsEnv
+    from hacman_real_env.pcd_obs_env.segmentation import BackgroundGeometry
+
+    obs_env = PCDObsEnv(
+        voxel_size=0.002,
+    )
     bg = BackgroundGeometry()
     
     # Record all the object pcds
     obj_pcds = []
     obj_imgs = []
     for _ in range(num_poses):
-        pcd = obs_env.get_pcd(return_numpy=False)
+        frame = obs_env.record_img(crop_size=0.6)
+        pcd = obs_env.get_pcd(
+            return_numpy=False, color=False)
         pcd, bg_mask = bg.process_pcd(
                             pcd,
-                            replace_bg=True,
+                            replace_bg=False,
                             debug=True)
         obj_pcd = pcd.select_by_index(bg_mask, invert=True)
         obj_pcds.append(obj_pcd)
-
-        frame = obs_env.record_img()
+        
         obj_imgs.append(frame)
     
     return obj_pcds, obj_imgs
@@ -45,6 +49,18 @@ def save_object_goals(pcds, imgs, obj_name):
             'imgs': imgs
         }
         pickle.dump(content, f)
+    
+    # Save the image previews
+    n_row = 3
+    n_col = len(imgs) // n_row + 1
+    h, w, _ = imgs[0].shape
+    preview_img = np.zeros((n_row * h, n_col * w, 3), dtype=np.uint8)
+    for i, img in enumerate(imgs):
+        row = i // n_col
+        col = i % n_col
+        preview_img[row*h:(row+1)*h, col*w:(col+1)*w] = img
+    preview_img_path = os.path.join(goal_pcd_dir, f'{obj_name}.png')
+    imageio.imwrite(preview_img_path, preview_img)
 
 def load_object_goals(obj_name):
     # Load the pcds
@@ -65,8 +81,8 @@ def load_object_goals(obj_name):
 
 
 if __name__ == '__main__':
-    obj_name = "blue_box"
-    pcds, imgs = record_object_goals(num_poses=10)
+    obj_name = "green_cup"
+    pcds, imgs = record_object_goals(num_poses=2)
     save_object_goals(pcds, imgs, obj_name)
 
     # Check the results

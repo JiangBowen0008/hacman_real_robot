@@ -35,8 +35,8 @@ class PCDObsEnv:
                  camera_indices=[0,1,2,3],
                  camera_param_dir=None,
                  camera_alignments=None, 
-                 voxel_size=0.005,
-                 clip_distance=1.5e3):
+                 voxel_size=0.002,
+                 clip_distance=1.5):
         self.camera_indices = camera_indices
         self.voxel_size = voxel_size
         self.clip_distance = clip_distance
@@ -45,11 +45,17 @@ class PCDObsEnv:
         if camera_param_dir is None:
             curr_dir = os.path.dirname(os.path.abspath(__file__))
             camera_param_dir = os.path.join(curr_dir, 'calibration/calibration_results')
+        # camera_params_files = {
+        #     0: 'cam0_calibration.npz',
+        #     1: 'cam1_calibration.npz',
+        #     2: 'cam2_calibration.npz',
+        #     3: 'cam3_calibration.npz',
+        # }
         camera_params_files = {
-            0: 'cam0_calibration.npz',
-            1: 'cam1_calibration.npz',
-            2: 'cam2_calibration.npz',
-            3: 'cam3_calibration.npz',
+            0: 'cam0_pcd_calibration.npz',
+            1: 'cam1_pcd_calibration.npz',
+            2: 'cam2_pcd_calibration.npz',
+            3: 'cam3_pcd_calibration.npz',
         }
         self.camera_transforms = load_camera_transforms(camera_param_dir, camera_params_files)
 
@@ -73,7 +79,7 @@ class PCDObsEnv:
         except:
             print(f"Failed to start camera {cam_id}")       
     
-    def get_pcd(self, return_numpy=True, clip_table=True):
+    def get_pcd(self, return_numpy=True, clip_table=True, color=False):
         """
         Get the point cloud from all the cameras. Perform voxel downsampling.
         """
@@ -81,7 +87,7 @@ class PCDObsEnv:
         # Obtain pcds from all cameras in parallel, CPU bound
         pcds = []
         for cam_id in self.camera_indices:
-            pcd = self.get_single_pcd(cam_id)
+            pcd = self.get_single_pcd(cam_id, color=color)
             
             if pcd is not None:
                 pcds.append(pcd)
@@ -119,7 +125,7 @@ class PCDObsEnv:
 
         return combined_pcd
     
-    def get_single_raw_pcd(self, cam_id):
+    def get_single_raw_pcd(self, cam_id, color=False):
         """
         Capture a single point cloud (o3d) from a camera.
         """
@@ -131,19 +137,26 @@ class PCDObsEnv:
             # Read pcd from k4a
             pcd = capture.depth_point_cloud
             pcd = pcd.reshape(-1, 3)
+            pcd = pcd.astype(np.float32) / 1e3  # Convert to meters
+            pcd_o3d = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd))
+
+            if color:
+                colors = capture.transformed_color
+                colors = colors.reshape(-1, 4)[:, :3]
+                pcd_o3d.colors = o3d.utility.Vector3dVector(colors / 255.0)
 
             # Clip points too far away
             distances = np.linalg.norm(pcd, axis=1)
-            pcd = pcd[distances < self.clip_distance]
-
-            pcd = pcd.astype(np.float32) / 1e3  # Convert to meters
-            return pcd
+            distance_mask = np.where(distances < self.clip_distance)[0]
+            pcd_o3d = pcd_o3d.select_by_index(distance_mask)
+            
+            return pcd_o3d
 
         except:
             print(f"Failed to capture PCD from camera {cam_id}")
             return None
     
-    def get_single_pcd(self, cam_id):
+    def get_single_pcd(self, cam_id, color=False):
         """
         Capture a single point cloud (o3d) from a camera, 
         Perform the following steps:
@@ -155,16 +168,16 @@ class PCDObsEnv:
             - estimate normals
         """
         start_time = time.time()
-        pcd = self.get_single_raw_pcd(cam_id)
+        pcd = self.get_single_raw_pcd(cam_id, color=color)
         end_time = time.time()
         if pcd is not None:
             # Transform to base frame
             transform = self.camera_transforms[cam_id]
-            pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd))
             pcd = pcd.transform(transform)
 
             # Apply camera alignment
             pcd = pcd.transform(self.camera_alignments[cam_id])
+            # return pcd
 
             # Random downsample
             pcd_size = len(pcd.points)
@@ -180,7 +193,8 @@ class PCDObsEnv:
             nb_points = int(((radius / voxel_size) ** 2) * 0.95) 
             pcd_down, _ = pcd_down.remove_radius_outlier(nb_points=nb_points, radius=radius)
 
-            pcd.paint_uniform_color(self.camera_colors[cam_id])
+            if not color:
+                pcd.paint_uniform_color(self.camera_colors[cam_id])
             end_time2 = time.time()
             print(f"Cam {cam_id}. Capture takes {end_time - start_time:.3f}s. Processing takes {end_time2 - end_time:.3f}s.")
             return pcd_down
@@ -203,11 +217,11 @@ class PCDObsEnv:
         coords = [self.get_camera_coord(cam_id) for cam_id in self.camera_indices]
         return coords
     
-    def visualize(self, clip_table=True):
+    def visualize(self, clip_table=True, color=True):
         """
         Visualize the point cloud from all the cameras.
         """
-        combined_pcd = self.get_pcd(return_numpy=False, clip_table=clip_table)
+        combined_pcd = self.get_pcd(return_numpy=False, clip_table=clip_table, color=True)
         combined_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
         camera_coords = self.get_camera_coords()
         base_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
@@ -261,7 +275,9 @@ class PCDObsEnv:
         frames = deepcopy(self.video_frames)
         return frames
     
-    def record_img(self, cam_id=2):
+    def record_img(self, 
+                   cam_id=2,
+                   crop_size=1.0):
         """
         Record a single image from a camera.
         """
@@ -271,7 +287,14 @@ class PCDObsEnv:
             assert capture.color is not None
             img = deepcopy(capture.color)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            return img
+
+            # Cropping from the center
+            w, h = img.shape[:2]
+            crop_w, crop_h = int(w * crop_size), int(h * crop_size)
+            start_w, start_h = (w - crop_w) // 2, (h - crop_h) // 2
+            cropped_img = img[start_w:start_w+crop_w, start_h:start_h+crop_h]
+
+            return cropped_img
         except:
             print(f"Failed to record RGB frame from {cam_id}")
             return None
@@ -373,7 +396,10 @@ def save_video(frames):
 
 # Main program
 def main():
-    env = PCDObsEnv(voxel_size=0.01)
+    env = PCDObsEnv(
+        # camera_alignments=False,
+        # camera_indices=[0,2],
+        voxel_size=0.002)
     env.visualize()
 
     # Test camera recording
@@ -381,6 +407,11 @@ def main():
     # time.sleep(3)
     # frames = env.end_video_record()
     # save_video(frames)
+
+    # Test image recording
+    img = env.record_img()
+    plt.imshow(img)
+    plt.show()
 
 if __name__ == "__main__":
     main()

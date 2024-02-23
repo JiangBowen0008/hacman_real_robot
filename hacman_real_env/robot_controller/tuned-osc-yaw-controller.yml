@@ -7,8 +7,11 @@ traj_interpolator_cfg:
   time_fraction: 0.3
 
 Kp:
-  translation: [240.0, 200.0, 200.0]
-  rotation: 250.0
+  # translation: [500.0, 500.0, 350.0]
+  # translation: 450.0
+  # translation: 750.0
+  translation: 650.0
+  rotation: 550.0
 
 action_scale:
   translation: 0.05
@@ -22,7 +25,7 @@ state_estimator_cfg:
   state_estimator_type: EXPONENTIAL_SMOOTHING
   alpha_q: 0.9
   alpha_dq: 0.9
-  alpha_eef: 1.0
-  alpha_eef_vel: 1.0
+  alpha_eef: 0.95
+  alpha_eef_vel: 0.95
 
 
