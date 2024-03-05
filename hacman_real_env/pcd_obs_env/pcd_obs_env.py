@@ -143,6 +143,7 @@ class PCDObsEnv:
             if color:
                 colors = capture.transformed_color
                 colors = colors.reshape(-1, 4)[:, :3]
+                colors = colors[:, [2, 1, 0]]   # BGR to RGB
                 pcd_o3d.colors = o3d.utility.Vector3dVector(colors / 255.0)
 
             # Clip points too far away
@@ -221,7 +222,7 @@ class PCDObsEnv:
         """
         Visualize the point cloud from all the cameras.
         """
-        combined_pcd = self.get_pcd(return_numpy=False, clip_table=clip_table, color=True)
+        combined_pcd = self.get_pcd(return_numpy=False, clip_table=clip_table, color=color)
         combined_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
         camera_coords = self.get_camera_coords()
         base_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
@@ -231,7 +232,7 @@ class PCDObsEnv:
             *camera_coords
             ])
     
-    def start_video_record(self, cam_id=2):
+    def start_video_record(self, cam_id=1):
         """
         Start a non-blocking thread that records RGB video from a camera. FPS is 30.
         """
@@ -276,7 +277,7 @@ class PCDObsEnv:
         return frames
     
     def record_img(self, 
-                   cam_id=2,
+                   cam_id=1,
                    crop_size=1.0):
         """
         Record a single image from a camera.

@@ -88,8 +88,8 @@ def move_robot_and_record_data(
 def main():
     cam_id = 2
     # 0: right -     000003493812
-    # 1: left -     000880595012
-    # 2: front -    000180921812
+    # 2: left -     000880595012
+    # 1: front -    000180921812
     # 3: back -     000263392612
     initial_yaw = {
         0: 0.5 * np.pi,
@@ -100,7 +100,7 @@ def main():
     
     # Perform the movements and record data
     move_robot_and_record_data(
-        cam_id=cam_id, num_movements=20, debug=False, 
+        cam_id=cam_id, num_movements=20, debug=True, 
         initial_yaw=initial_yaw)
     
 

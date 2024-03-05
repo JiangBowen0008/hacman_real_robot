@@ -21,7 +21,7 @@ def record_object_goals(num_poses=10):
     for _ in range(num_poses):
         frame = obs_env.record_img(crop_size=0.6)
         pcd = obs_env.get_pcd(
-            return_numpy=False, color=False)
+            return_numpy=False, color=True)
         pcd, bg_mask = bg.process_pcd(
                             pcd,
                             replace_bg=False,
@@ -38,6 +38,7 @@ def save_object_goals(pcds, imgs, obj_name):
     pcds_np = []
     for pcd in pcds:
         pcd_np = np.asarray(pcd.points)
+        pcd_colors = np.asarray(pcd.colors)
         pcds_np.append(pcd_np)
     
     # Save the pcds
@@ -46,6 +47,7 @@ def save_object_goals(pcds, imgs, obj_name):
     with open(file_path, 'wb') as f:
         content = {
             'pcds': pcds_np,
+            'colors': pcd_colors,
             'imgs': imgs
         }
         pickle.dump(content, f)
@@ -68,6 +70,7 @@ def load_object_goals(obj_name):
     with open(file_path, 'rb') as f:
         content = pickle.load(f)
         pcds_np = content['pcds']
+        pcd_colors = content['colors']
         imgs = content['imgs']
     
     # Convert to open3d
@@ -75,14 +78,15 @@ def load_object_goals(obj_name):
     for pcd_np in pcds_np:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pcd_np)
+        pcd.colors = o3d.utility.Vector3dVector(pcd_colors)
         pcds.append(pcd)
     
     return pcds, imgs
 
 
 if __name__ == '__main__':
-    obj_name = "green_cup"
-    pcds, imgs = record_object_goals(num_poses=2)
+    obj_name = "orange_car_colored"
+    pcds, imgs = record_object_goals(num_poses=4)
     save_object_goals(pcds, imgs, obj_name)
 
     # Check the results

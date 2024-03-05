@@ -82,7 +82,7 @@ def estimate_transformation(corners, ids, camera_matrix, dist_coeffs):
 
 def main():
     # Initialize the camera
-    cam_id = 3
+    cam_id = 1
     k4a = PyK4A(device_id=cam_id)
     k4a.start()
 
