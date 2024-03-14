@@ -35,7 +35,8 @@ def estimate_tag_pose(finger_pose):
     print("hand to finger", hand_to_finger)
     hand_pose = np.dot(finger_pose, hand_to_finger)
 
-    t_tag_to_hand = np.array([0.048914, 0.0275, 0.00753])
+    t_tag_to_hand = np.array([0.048914, 0.0275, 0.00753])   # to tag corner
+    t_tag_to_hand += np.array([0, -0.0275, 0.0275])         # to tag center
     # R_tag_to_hand = Rotation.from_quat([0.5, -0.5, 0.5, -0.5])
     R_tag_to_hand = Rotation.from_quat([0, 0, 0, 1])
     tag_to_hand = np.eye(4)
@@ -129,7 +130,7 @@ if __name__ == "__main__":
     dirpath = os.path.dirname(filepath)
 
     # Load data
-    cam_id = 0
+    cam_id = 3
     data_dirname = os.path.join(dirpath, "data")
     data_filepath = os.path.join(data_dirname, f"cam{cam_id}_data.pkl")
     with open(data_filepath, "rb") as f:

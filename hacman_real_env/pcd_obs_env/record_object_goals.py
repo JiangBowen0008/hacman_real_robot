@@ -70,7 +70,7 @@ def load_object_goals(obj_name):
     with open(file_path, 'rb') as f:
         content = pickle.load(f)
         pcds_np = content['pcds']
-        pcd_colors = content['colors']
+        pcd_colors = content['colors'] if 'colors' in content else None
         imgs = content['imgs']
     
     # Convert to open3d
@@ -78,7 +78,8 @@ def load_object_goals(obj_name):
     for pcd_np in pcds_np:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pcd_np)
-        pcd.colors = o3d.utility.Vector3dVector(pcd_colors)
+        if pcd_colors is not None:
+            pcd.colors = o3d.utility.Vector3dVector(pcd_colors)
         pcds.append(pcd)
     
     return pcds, imgs

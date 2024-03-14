@@ -45,18 +45,18 @@ class PCDObsEnv:
         if camera_param_dir is None:
             curr_dir = os.path.dirname(os.path.abspath(__file__))
             camera_param_dir = os.path.join(curr_dir, 'calibration/calibration_results')
-        # camera_params_files = {
-        #     0: 'cam0_calibration.npz',
-        #     1: 'cam1_calibration.npz',
-        #     2: 'cam2_calibration.npz',
-        #     3: 'cam3_calibration.npz',
-        # }
         camera_params_files = {
-            0: 'cam0_pcd_calibration.npz',
-            1: 'cam1_pcd_calibration.npz',
-            2: 'cam2_pcd_calibration.npz',
-            3: 'cam3_pcd_calibration.npz',
+            0: 'cam0_calibration.npz',
+            1: 'cam1_calibration.npz',
+            2: 'cam2_calibration.npz',
+            3: 'cam3_calibration.npz',
         }
+        # camera_params_files = {
+        #     0: 'cam0_pcd_calibration.npz',
+        #     1: 'cam1_pcd_calibration.npz',
+        #     2: 'cam2_pcd_calibration.npz',
+        #     3: 'cam3_pcd_calibration.npz',
+        # }
         self.camera_transforms = load_camera_transforms(camera_param_dir, camera_params_files)
 
         # Load the default camera alignment. Load identity when set to False.
@@ -173,12 +173,7 @@ class PCDObsEnv:
         end_time = time.time()
         if pcd is not None:
             # Transform to base frame
-            transform = self.camera_transforms[cam_id]
-            pcd = pcd.transform(transform)
-
-            # Apply camera alignment
-            pcd = pcd.transform(self.camera_alignments[cam_id])
-            # return pcd
+            pcd = self.transform_raw_pcd(pcd, cam_id)
 
             # Random downsample
             pcd_size = len(pcd.points)
@@ -201,6 +196,11 @@ class PCDObsEnv:
             return pcd_down
         else:
             return None
+        
+    def transform_raw_pcd(self, pcd, cam_id):
+        pcd = pcd.transform(self.camera_transforms[cam_id]) # Apply camera extrinc
+        pcd = pcd.transform(self.camera_alignments[cam_id]) # Apply camera alignment
+        return pcd
     
     def get_camera_coord(self, cam_id):
         """

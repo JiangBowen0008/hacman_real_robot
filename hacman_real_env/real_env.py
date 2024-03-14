@@ -19,7 +19,7 @@ class RealEnv(gym.Env, HACManObsEnv):
                  object_name,
                  object_pcd_size=400,
                  background_pcd_size=1000,
-                 voxel_downsample_size=0.01,
+                 voxel_downsample_size=0.005,
                  obs_args={}, 
                  robot_args={"controller_type": "OSC_YAW"},
                  eef_offset_path="data/offset_calibration_params.npz",
@@ -53,8 +53,8 @@ class RealEnv(gym.Env, HACManObsEnv):
         
         # eef_offset = load_calibration_param(eef_offset_path)
         eef_offset = np.eye(4)
-        eef_offset[0, 3] += 0.015
-        eef_offset[2, 3] += 0.003
+        # eef_offset[0, 3] += 0.015
+        # eef_offset[2, 3] += 0.003
         self.robot = FrankaOSCController(
             frame_transform=real2obs_transform,    # All the poses sent to the robot need to be transformed to the real poses
             controller_offset=eef_offset,
@@ -368,9 +368,9 @@ def test_main(object_name):
 
     # Visualize in open3d
     object_pcd = obs['object_pcd_o3d']
-    object_pcd.paint_uniform_color([1, 0.706, 0])
+    # object_pcd.paint_uniform_color([1, 0.706, 0])
     background_pcd = obs['background_pcd_o3d']
-    background_pcd.paint_uniform_color([0, 0.651, 0.929])
+    # background_pcd.paint_uniform_color([0, 0.651, 0.929])
 
     # Create interactive visualizer
     pcd = object_pcd + background_pcd
@@ -385,7 +385,7 @@ def test_main(object_name):
     for i in picked_points:
         target_pos = np.asarray(pcd.points)[i]
         # Move to the target position
-        gripper_target_pos = target_pos + np.array([0, 0, 0.04])
+        gripper_target_pos = target_pos + np.array([0, 0, 0.08])
         env.step(gripper_target_pos)
         env.step(target_pos)
 

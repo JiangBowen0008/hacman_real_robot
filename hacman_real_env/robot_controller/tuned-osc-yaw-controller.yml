@@ -10,8 +10,8 @@ Kp:
   # translation: [500.0, 500.0, 350.0]
   # translation: 450.0
   # translation: 750.0
-  translation: 650.0
-  rotation: 550.0
+  translation: 450.0
+  rotation: 350.0
 
 action_scale:
   translation: 0.05

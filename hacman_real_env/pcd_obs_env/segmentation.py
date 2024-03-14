@@ -137,7 +137,7 @@ class BackgroundGeometry():
         # Crop with the bin AABB
         min_bound, max_bound = self.params['aabb_min_bound'], self.params['aabb_max_bound']
         min_bound[2] = -self.bin_tolerance   # Hack the min bound to allow some tolerance
-        max_bound[2] = 0.5
+        max_bound[2] = 1
         aabb = o3d.geometry.AxisAlignedBoundingBox(min_bound, max_bound)
         pcd = pcd.crop(aabb)
 

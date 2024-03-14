@@ -43,7 +43,7 @@ class FrankaOSCController():
                  controller_cfg="hacman_real_env/robot_controller/tuned-osc-yaw-controller.yml",
                  controller_offset=np.eye(4),
                  frame_transform=np.eye(4),
-                 tip_offset=np.array([0, 0, -0.0766]),
+                 tip_offset=np.array([0, 0, 0.0766]),
                  visualizer=False):
         self.robot_interface = FrankaInterface(
             config_root + f"/{interface_cfg}",
@@ -77,6 +77,9 @@ class FrankaOSCController():
     def reset(self, joint_positions=None):
         joint_positions = joint_positions if joint_positions is not None else self.reset_joint_positions
         reset_joints_to(self.robot_interface, joint_positions)
+        while self.robot_interface.state_buffer_size == 0:
+            logger.warn("Robot state not received")
+            time.sleep(0.5)
 
     def move_to(self, 
                 target_pos,
@@ -103,7 +106,7 @@ class FrankaOSCController():
         else:
             raise ValueError("Either target_quat or target_delta_axis_angle must be specified")        
         
-        target_pos = target_pos.reshape(3, 1)
+        target_pos = np.array(target_pos).reshape(3, 1)
         try:
             pos_diff, angle_diff = self._osc_move(
                 (target_pos, target_quat),
@@ -236,9 +239,9 @@ class FrankaOSCController():
         target_pos, target_quat = target_pose
         target_mat = transform_utils.pose2mat((target_pos.flatten(), target_quat))
 
-        target_mat = np.linalg.inv(self.tip_transform) @ target_mat     # Apply the tip transform
         target_mat = np.linalg.inv(self.frame_transform) @ target_mat   # Apply the scene transform
         target_mat = np.linalg.inv(self.controller_offset) @ target_mat # Apply the offset transform
+        target_mat = target_mat @ np.linalg.inv(self.tip_transform)      # Apply the tip transform
         
         # target_pos = target_pos.reshape(3, 1)
         # target_pos = inverse_transform[:3, :3] @ target_pos + inverse_transform[:3, 3:]
@@ -282,10 +285,18 @@ class FrankaOSCController():
 
     @property
     def eef_pose(self):
+        # pose of the gripper tip
         last_eef_pose = self.robot_interface.last_eef_pose
-        last_eef_pose = self.tip_transform @ last_eef_pose      # Apply the tip transform
+        last_eef_pose = last_eef_pose @ self.tip_transform      # Apply the tip transform
         last_eef_pose = self.frame_transform @ last_eef_pose    # Apply the scene transform
         last_eef_pose = self.controller_offset @ last_eef_pose  # Apply the offset transform
+        return last_eef_pose
+    
+    @property
+    def eef_base_pose(self):
+        # pose of the gripper tip base
+        last_eef_pose = self.robot_interface.last_eef_pose
+        last_eef_pose = self.frame_transform @ last_eef_pose    # Apply the scene transform
         return last_eef_pose
     
     @property
