@@ -51,7 +51,6 @@ This script moves the eef to a random pose near the initial joint positions, rec
 
 2. **If you are using eye-in-hand calibration**, the eef-to-marker transform can be set to uniform.
 
-
 **Run the following script to solve for calibration using the data previously collected.**
 
 ```
@@ -59,6 +58,12 @@ python hacman_real_env/pcd_obs_env/calibration/solve_calibration.py
 ```
 
 This script solves the correspondence between tag in robot base (world frame) and tag in camera frame. The result is the extrinsic matrix we need that transform pcd in the camera
+
+**Kabsch-Umeyama algorithm**
+
+The script `solve_calibration.py` uses *Kabsch-Umeyama algorithm* to solve for the rigid transformation in the [`solve_rigid_transformation` method](https://github.com/JiangBowen0008/hacman_real_robot/blob/db245a7ea643597f147598c7da3188c9b0242d8c/hacman_real_env/pcd_obs_env/calibration/solve_calibration.py#L50). 
+
+Suggested reading: [1](https://doi.org/10.6028/jres.124.028) or [2](https://math.nist.gov/~JBernal/kujustf.pdf)
 
 ----
 
