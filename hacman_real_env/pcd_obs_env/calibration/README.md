@@ -51,6 +51,7 @@ This script moves the eef to a random pose near the initial joint positions, rec
 
 2. **If you are using eye-in-hand calibration**, the eef-to-marker transform can be set to uniform.
 
+
 **Run the following script to solve for calibration using the data previously collected.**
 
 ```
