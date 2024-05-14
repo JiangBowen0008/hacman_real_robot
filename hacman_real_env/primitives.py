@@ -6,13 +6,19 @@ from scipy.spatial.transform import Rotation
 from hacman.utils.primitive_utils import GroundingTypes, Primitive, register_primitive
 
 class RealEnvPrimitive(Primitive):
-    def reset(self):
-        self.env.robot.reset()
+    def reset(self, **kwargs):
+        self.env.robot.reset(**kwargs)
     
     def get_step_return(self, info):
         return self.env.get_step_return(info)
+    
+    def get_location_bounds(self):
+        return self.env.get_scene_bounds(offset=0.015)
 
     def move_to(self, location, quat, grasp=True, **kwargs):
+        # Bound the x, y location
+        location_bounds = self.get_location_bounds()
+        location[:2] = np.clip(location[:2], location_bounds[0][:2], location_bounds[1][2:])
         self.env.robot.move_to(location, target_quat=quat, grasp=grasp, **kwargs)
     
     def move_by(self, target_delta_pos, grasp=True, **kwargs):
@@ -39,7 +45,7 @@ class RealEnvPrimitive(Primitive):
             quat=quat,
             grasp=close_gripper,
             num_steps=10,
-            num_additional_steps=0,
+            num_additional_steps=10,
             max_delta_pos=0.05,)
         return True
     
@@ -55,7 +61,7 @@ class RealEnvPrimitive(Primitive):
         return True
     
     def convert_yaw_to_quat(self, yaw):
-        # yaw = yaw - 0.5 * np.pi
+        yaw = yaw * 0.5 # - 0.5 * np.pi
         if yaw > 0.5 * np.pi:
             yaw -= np.pi
         elif yaw < -0.5 * np.pi:
@@ -68,7 +74,8 @@ class RealEnvPrimitive(Primitive):
     
     def end_video_record(self):
         frames = self.env.unwrapped.end_video_record()
-        self.env.unwrapped.frames.extend(frames)
+        if frames is not None:
+            self.env.unwrapped.frames.extend(frames)
 
 @register_primitive('real-open_gripper', GroundingTypes.BACKGROUND_ONLY, motion_dim=5)
 class OpenGripper(RealEnvPrimitive):
@@ -99,7 +106,11 @@ class Poke(RealEnvPrimitive):
         normal = kwargs.get('normal', None)
 
         # Calculate the angle
-        z_rot = np.arctan2(motion[-1], motion[-2])
+        # z_rot = np.arctan2(motion[-1], motion[-2])
+        ## type 1 rotation
+        # z_rot = motion[-2] * np.pi/2
+        ## type 3 rotation
+        z_rot = motion[-2] * np.pi
         if self.use_oracle_rotation:
             z_rot = 0.0
         quat = self.convert_yaw_to_quat(z_rot)
@@ -130,17 +141,17 @@ class Poke(RealEnvPrimitive):
         # Post-contact movements
         if success:
             action_repeat = 3
-            for _ in range(action_repeat):  # Action repeat
-                # delta_pos = motion[:3] * 0.02 * 1.15   # For poke
-                delta_pos = motion[:3] * 0.02 * 1.15
-                self.move_by(
-                    target_delta_pos=delta_pos,
-                    num_steps=10,
-                    # step_repeat=10,     
-                    # Hack to reproduce the original behavior
-                    num_additional_steps=0,
-                    end_on_reached=True,
-                    grasp=True)
+            # for _ in range(action_repeat):  # Action repeat
+            #     # delta_pos = motion[:3] * 0.02 * 1.15   # For poke
+            #     delta_pos = motion[:3] * 0.02 * 1.2
+            #     self.move_by(
+            #         target_delta_pos=delta_pos,
+            #         num_steps=10,
+            #         # step_repeat=10,
+            #         # Hack to reproduce the original behavior
+            #         num_additional_steps=0,
+            #         end_on_reached=True,
+            #         grasp=True)
             
             # for _ in range(action_repeat):  # Action repeat
             #     delta_pos = motion[:3] * 0.02 * 1.3
@@ -151,14 +162,14 @@ class Poke(RealEnvPrimitive):
             #         end_on_reached=True,
             #         grasp=True)
             
-            # delta_pos = motion[:3] * 0.02 * 1.3 * action_repeat
-            # self.move_by(
-            #     target_delta_pos=delta_pos,
-            #     num_steps=16 * action_repeat,
-            #     num_additional_steps=0,
-            #     max_delta_pos=0.03,
-            #     end_on_reached=True,
-            #     grasp=True)
+            delta_pos = motion[:3] * 0.02 * 1.3 * action_repeat
+            self.move_by(
+                target_delta_pos=delta_pos,
+                num_steps=15 * action_repeat,
+                num_additional_steps=0,
+                # max_delta_pos=0.03,
+                end_on_reached=True,
+                grasp=True)
             
             
         # Reset the robot to move the gripper out of the way
@@ -173,7 +184,7 @@ class Poke(RealEnvPrimitive):
         return obs, all_rewards, done, info
     
     def visualize(self, motion):
-        motion_ = motion[..., :3] * 0.1
+        motion_ = motion[..., :3] * 0.02 * 1.2 * 3
         return motion_
     
     def is_valid(self, states: Dict) -> bool:
@@ -184,7 +195,11 @@ class PickNLift(RealEnvPrimitive):
     def execute(self, location, motion, **kwargs):
         self.start_video_record()
         # Calculate the angle
-        z_rot = np.arctan2(motion[-1], motion[-2])
+        # z_rot = np.arctan2(motion[-1], motion[-2])
+        ## rotation type 1
+        # z_rot = motion[-2] * np.pi/2
+        ## rotation type 3
+        z_rot = motion[-2] * np.pi
         if self.use_oracle_rotation:
             z_rot = 0.0
         quat = self.convert_yaw_to_quat(z_rot)
@@ -223,7 +238,11 @@ class Place(RealEnvPrimitive):
     def execute(self, location, motion, **kwargs):
         self.start_video_record()
         # Calculate the angle
-        z_rot = np.arctan2(motion[-1], motion[-2])
+        # z_rot = np.arctan2(motion[-1], motion[-2])
+        ## rotation type 1
+        # z_rot = motion[-2] * np.pi/2
+        ## rotation type 3  
+        z_rot = motion[-2] * np.pi
         if self.use_oracle_rotation:
             z_rot = 0.0
         quat = self.convert_yaw_to_quat(z_rot)
@@ -259,7 +278,11 @@ class Move(RealEnvPrimitive):
     def execute(self, location, motion, **kwargs):
         self.start_video_record()
         # Calculate the angle
-        z_rot = np.arctan2(motion[-1], motion[-2])
+        # z_rot = np.arctan2(motion[-1], motion[-2])
+        ## rotation type 1
+        # z_rot = motion[-2] * np.pi/2
+        ## rotation type 3
+        z_rot = motion[-2] * np.pi
         if self.use_oracle_rotation:
             z_rot = 0.0
         quat = self.convert_yaw_to_quat(z_rot)

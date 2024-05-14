@@ -42,7 +42,7 @@ def benchmark_controller_err(kp_pos_list, kp_rot_list, residual_mass_vec_list, n
         controller_cfg.residual_mass_vec = residual_mass_vec
         # breakpoint()
 
-        initial_pos = np.array([0.52, -0.3, 0.12])  # initial pos is slightly different from pos obtained from initial_joint_positions
+        initial_pos = np.array([0.52, -0.3, 0.2])  # initial pos is slightly different from pos obtained from initial_joint_positions
         controller.move_to(initial_pos, target_delta_axis_angle=np.array([0, 0, 0]),
                             num_steps=100, num_additional_steps=50)
         

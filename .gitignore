@@ -1,6 +1,6 @@
 benchmark_results/
 logs/
-results/
+*results*/
 ckpts/
 
 # Google drive

@@ -13,6 +13,14 @@ def display_inlier_outlier(cloud, ind):
     inlier_cloud.paint_uniform_color([0.8, 0.8, 0.8])
     o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
+def display_pcd_segmentation(pcd, labels):
+    pcds = o3d.geometry.PointCloud()
+    for i in np.unique(labels):
+        cluster = pcd.select_by_index(np.where(labels == i)[0])
+        cluster.paint_uniform_color(np.random.rand(3))
+        pcds += cluster
+    o3d.visualization.draw_geometries([pcds])
+
 def transform_point(point, transformation):
     point = np.asarray(point)
     point = np.append(point, 1)

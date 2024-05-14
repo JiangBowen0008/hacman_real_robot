@@ -21,14 +21,18 @@ class HACManObsEnv(PCDObsEnv):
     def __init__(
             self, 
             object_name,
+            n_objects=1,
             voxel_downsample_size=0.01,
+            registration=True,
             allow_manual_registration=False,
             allow_full_pcd=False,
             symmetric_object=False,
             **args) -> None:
         super().__init__(**args)
         self.object_name = object_name
+        self.n_objects = n_objects
         self.voxel_downsample_size = voxel_downsample_size
+        self.registration = registration
         self.bg = BackgroundGeometry()
         self.obj_reg = ObjectRegistration(
             object_name, 
@@ -39,14 +43,22 @@ class HACManObsEnv(PCDObsEnv):
     def resample_goal(self):
         self.obj_reg.resample_goal()
     
-    def get_obs(self, visualize=False):
+    def get_obs(self, 
+                color=True,
+                clip_gripper_pcd=None,
+                visualize=False):
         # Get the pcd
-        pcd = self.get_pcd(return_numpy=False)
+        pcd = self.get_pcd(return_numpy=False, color=color)
+
+        # Clip the pcd
+        if clip_gripper_pcd is not None:
+            pcd = self._clip_pcd_z(pcd, clip_gripper_pcd)
         
         # Process the pcd
         pcd, bg_mask = self.bg.process_pcd(
                             pcd,
-                            replace_bg=False,
+                            replace_bg=True,
+                            n_objects=self.n_objects,
                             debug=False)
         bg_pcd = pcd.select_by_index(bg_mask)
         obj_pcd = pcd.select_by_index(bg_mask, invert=True)
@@ -59,8 +71,13 @@ class HACManObsEnv(PCDObsEnv):
         # o3d.visualization.draw_geometries([obj_pcd, bg_pcd], point_show_normal=True)
         
         # Register the object pcd
-        goal_pcd, goal_pose = self.obj_reg.get_transformed_goal_pcd(obj_pcd)
-        obj_pose = np.eye(4)    # Consider the object pose to be identity
+        if self.registration:
+            goal_pcd, goal_pose = self.obj_reg.get_transformed_goal_pcd(obj_pcd, debug=False)
+            obj_pose = np.eye(4)    # Consider the object pose to be identity
+        else:
+            goal_pcd = self.obj_reg.get_goal_pcd()
+            goal_pose = np.eye(4)
+            obj_pose = np.eye(4)
 
         # Voxel downsample the point cloud
         obj_pcd = obj_pcd.voxel_down_sample(voxel_size=self.voxel_downsample_size)
@@ -80,6 +97,15 @@ class HACManObsEnv(PCDObsEnv):
             'object_pcd_o3d': obj_pcd,
             'background_pcd_o3d': bg_pcd,
         }
+
+    def _clip_pcd_z(self, pcd, z_min, debug=False):
+        pcd_z = np.asarray(pcd.points)[:, 2]
+        clip_mask = np.where(pcd_z > z_min)[0]
+        if debug:
+            display_inlier_outlier(pcd, clip_mask)
+        pcd = pcd.select_by_index(clip_mask, invert=True)
+
+        return pcd
     
     def get_obs2real_transform(self):
         return self.bg.get_obs2real_transform()

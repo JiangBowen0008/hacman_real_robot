@@ -68,14 +68,14 @@ class ObjectRegistration():
                     }
                 elif (fitness < 0.5) and (self.allow_approximate):
                     print(":: WARNING: ICP did not converge! Using approximate registration")
-                    transform = approximate_registration(source, target, voxel_size=0.01)
+                    transform = approximate_registration(source, target, voxel_size=0.005)
                     info = {
                         "fitness": 0,
                         "MSE": 1.,
                     }
         except Exception as e:
             print(":: Object resgistration error")
-            transform = approximate_registration(source, target, voxel_size=0.01)
+            transform = approximate_registration(source, target, voxel_size=0.005)
             info = {
                 "fitness": 0,
                 "MSE": 1.,
@@ -143,13 +143,13 @@ def run_registration(source, target, output_fitness=False, visualize=False, allo
     obb_target.color = (0, 1, 0)
     
     # Global
-    voxel_size=0.01
+    voxel_size=0.005
     source_down, source_fpfh = preprocess_point_cloud(source, voxel_size)
     target_down, target_fpfh = preprocess_point_cloud(target, voxel_size)
     
     # Local
     best_result = (0, None)
-    for i in range(6):
+    for i in range(8):
         ransac_transform = execute_global_registration(source_down, target_down,
                                                 source_fpfh, target_fpfh,
                                                 voxel_size)
@@ -165,7 +165,8 @@ def run_registration(source, target, output_fitness=False, visualize=False, allo
 
         reg_p2p = run_object_icp(
             source_down, target_down, ransac_transform,
-            max_correspondence_distance=0.015,)
+            # max_correspondence_distance=0.004,
+            )
         print("ICP: Fitness {:.2f} \t MSE {:.2e}".format(reg_p2p.fitness, reg_p2p.inlier_rmse))
         # icp_result = copy.deepcopy(reg_p2p.transformation)
 
@@ -266,7 +267,7 @@ def run_manual_registration(source, target, source_bg=None, target_bg=None):
     return reg_p2p
 
 
-def run_object_icp(source, target, init_transform, max_correspondence_distance=0.015):
+def run_object_icp(source, target, init_transform, max_correspondence_distance=0.01):
     reg_p2p = o3d.pipelines.registration.registration_icp(
             source, target, max_correspondence_distance=max_correspondence_distance, init=init_transform,
             estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
@@ -312,7 +313,7 @@ def execute_global_registration(source_down, target_down, source_fpfh,
     translation = target_center - source_center
     source_down.translate(translation)
 
-    distance_threshold = 0.03
+    distance_threshold = 0.015
     # print(":: RANSAC registration on downsampled point clouds.")
     # print("   Since the downsampling voxel size is %.3f," % voxel_size)
     # print("   we use a liberal distance threshold %.3f." % distance_threshold)
@@ -332,13 +333,24 @@ def execute_global_registration(source_down, target_down, source_fpfh,
     transform = np.matmul(transform, translation_transform)
     return transform
 
-def load_object_full_pcd(object_name):
-    full_pcd_dir = os.path.join(curr_dir, 'full_pcds')
-    file_path = os.path.join(full_pcd_dir, f'{object_name}.pcd')
-    if not os.path.exists(file_path):
-        print(f"Warning: File {file_path} does not exist!")
-        return None
-    pcd = o3d.io.read_point_cloud(file_path)
+def load_object_full_pcd(object_name, scan_dir='full_pcds'):
+    full_pcd_dir = os.path.join(curr_dir, scan_dir)
+    if scan_dir == 'full_pcds':
+        file_path = os.path.join(full_pcd_dir, f'{object_name}.pcd')
+        if not os.path.exists(file_path):
+            print(f"Warning: File {file_path} does not exist!")
+            return None
+        pcd = o3d.io.read_point_cloud(file_path)
+    elif scan_dir == 'object_scans':
+        # Load from .obj files in object_scans
+        file_path = os.path.join(full_pcd_dir, f'{object_name}.obj')
+        if not os.path.exists(file_path):
+            print(f"Warning: File {file_path} does not exist!")
+            return None
+        pcd = o3d.io.read_triangle_mesh(file_path)
+        pcd = pcd.sample_points_uniformly(number_of_points=10000)
+        pcd = pcd.voxel_down_sample(voxel_size=0.001)
+
     pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.02, max_nn=30))
     pcd.orient_normals_consistent_tangent_plane(20)
     return pcd
@@ -450,7 +462,7 @@ def test_single_object(object_name):
         # goal_idx = 8
         goal_pcd, transform = object_reg.get_transformed_goal_pcd(
             object_pcd,
-            # debug=True
+            debug=True
             )
         gt_goal_pcd = object_reg.get_goal_pcd()
 
@@ -462,5 +474,5 @@ def test_single_object(object_name):
 
 if __name__ == '__main__':
     # benchmark_registration('rubiks_cube', num_trials=20)
-    test_single_object('cardboard')
+    test_single_object('white_box')
     

@@ -43,7 +43,7 @@ class FrankaOSCController():
                  controller_cfg="hacman_real_env/robot_controller/tuned-osc-yaw-controller.yml",
                  controller_offset=np.eye(4),
                  frame_transform=np.eye(4),
-                 tip_offset=np.array([0, 0, 0.0766]),
+                 tip_offset=np.array([0, 0, 0.08]),   # 0.0766 is measured
                  visualizer=False):
         self.robot_interface = FrankaInterface(
             config_root + f"/{interface_cfg}",
@@ -74,7 +74,7 @@ class FrankaOSCController():
             2.10698001,
             0.27106661]
     
-    def reset(self, joint_positions=None):
+    def reset(self, joint_positions=None, **kwargs):
         joint_positions = joint_positions if joint_positions is not None else self.reset_joint_positions
         reset_joints_to(self.robot_interface, joint_positions)
         while self.robot_interface.state_buffer_size == 0:
@@ -130,8 +130,9 @@ class FrankaOSCController():
                     logger.warn(f"Position not reached. Error: {pos_diff}")
                 if np.linalg.norm(angle_diff) > rot_tolerance:
                     logger.warn(f"Rotation not reached. Error: {angle_diff}")
-        except:
+        except Exception as e:
             logger.error("Error while moving")
+            print(e)
 
     def move_by(self, 
                 target_delta_pos=np.zeros(3), 
@@ -213,9 +214,9 @@ class FrankaOSCController():
                 if reached_pos and reached_rot:
                     break
 
+            target_pos, target_quat = self._apply_offset(target_pose)
+            delta_pos = target_pos - current_pos
             if max_delta_pos is not None:
-                target_pos, target_quat = self._apply_offset(target_pose)
-                delta_pos = target_pos - current_pos
                 if np.linalg.norm(delta_pos) > max_delta_pos:
                     target_pos = current_pos + (delta_pos / np.linalg.norm(delta_pos)) * max_delta_pos
             action_pos = (target_pos - current_pos).flatten() * 10
@@ -233,7 +234,11 @@ class FrankaOSCController():
                     action=action,
                     controller_cfg=self.controller_cfg,)
                 step_count += 1
-        return np.linalg.norm(delta_pos), np.linalg.norm(axis_angle_diff)
+        try:
+            return np.linalg.norm(delta_pos), np.linalg.norm(axis_angle_diff)
+        except:
+            return 0.0, 0.0
+
     
     def _apply_offset(self, target_pose):
         target_pos, target_quat = target_pose
@@ -334,25 +339,34 @@ if __name__ == "__main__":
     #     -0.0136721,
     #     2.03815885,
     #     0.25261351]
+    reset_joint_positions = [
+        0.09162008114028396,
+        -0.19826458111314524,
+        -0.01990020486871322,
+        -2.4732269941140346,
+        -0.01307073642274261,
+        2.30396583422025,
+        0.8480939705504309,
+    ]
     # reset_joint_positions = [
-    #     0.09162008114028396,
-    #     -0.19826458111314524,
-    #     -0.01990020486871322,
-    #     -2.4732269941140346,
-    #     -0.01307073642274261,
-    #     2.30396583422025,
-    #     0.8480939705504309,
+    #     0.0,
+    #     0.0,
+    #     0.0,
+    #     0.0,
+    #     0.0,
+    #     0.0,
+    #     0.0,
     # ]
-    # controller.reset(joint_positions=reset_joint_positions)
+    controller.reset(joint_positions=reset_joint_positions)
     # controller.move_to(np.array([0.45, -0.3, 0.25]), 
     #                    target_quat=np.array([ 0.7071068, -0.7071068, 0, 0 ]),
     #                    target_delta_axis_angle=np.array([0, 0, 0]),
     #                    grasp=False,
     #                    num_steps=40, num_additional_steps=10)
-    controller.move_by(np.array([0, 0, -0.0]),
-                       np.array([0, 0, 0]),
-                       grasp=True,
-                       num_steps=40, num_additional_steps=10)
+    # controller.move_by(np.array([0, 0, -0.0]),
+    #                    np.array([0, 0, 0]),
+    #                    grasp=True,
+    #                    num_steps=40, num_additional_steps=10)
     logger.debug("Final movement finished")
     # print(controller.robot_interface.last_q)
     eef_pose = controller.eef_pose

@@ -11,7 +11,7 @@ from copy import deepcopy
 
 from hacman.utils.transformations import to_pose_mat
 
-from hacman_real_env.pcd_obs_env.utils import display_inlier_outlier
+from hacman_real_env.pcd_obs_env.utils import *
 from hacman_real_env.pcd_obs_env.pcd_obs_env import PCDObsEnv
 
 seg_param_dir = os.path.join(os.path.dirname(__file__), 'segmentation_params')
@@ -87,7 +87,7 @@ class BackgroundGeometry():
         pcd.transform(real2obs_transform)
         return pcd
     
-    def process_pcd(self, pcd, replace_bg=False, debug=False):
+    def process_pcd(self, pcd, replace_bg=False, debug=False, n_objects=1):
         """
         Process the point cloud.
         3. Transform the entire pcd such that the center of the bin bottom is at the origin
@@ -97,7 +97,7 @@ class BackgroundGeometry():
         pcd = deepcopy(pcd)
 
         # Segment the object and background points
-        obj_pcd, bg_pcd = self._segment_pcd(pcd, debug=debug)
+        obj_pcd, bg_pcd = self._segment_pcd(pcd, debug=debug, n_objects=n_objects)
 
         # Transform the entire pcd such that the center of the bin bottom is at the origin
         obj_pcd = self.transform2obs(obj_pcd)
@@ -125,7 +125,7 @@ class BackgroundGeometry():
         
         return pcd, bg_mask
     
-    def _segment_pcd(self, pcd, debug=False):
+    def _segment_pcd(self, pcd, debug=False, n_objects=1, min_object_pts=80):
         '''
         Segment out background, object points.
 
@@ -160,24 +160,47 @@ class BackgroundGeometry():
         non_bg_pcd = non_bg_pcd.select_by_index(idx)
 
         # Cluster the non_bg points
-        cluster_idx = non_bg_pcd.cluster_dbscan(eps=0.03, min_points=100, print_progress=False)
-        cluster_idx = np.asarray(cluster_idx)   # The result might contain both the objects and the gripper
+        cluster_labels = non_bg_pcd.cluster_dbscan(eps=0.03, min_points=100, print_progress=False)
+        cluster_labels = np.asarray(cluster_labels)   # The result might contain both the objects and the gripper
 
         # Remove the cluster noise
-        non_bg_idx = np.where(cluster_idx!= -1)[0]
+        non_bg_idx = np.where(cluster_labels!= -1)[0]
         # display_inlier_outlier(obj_pcd, non_bg_idx)
         non_bg_pcd = non_bg_pcd.select_by_index(non_bg_idx)
-        cluster_idx = cluster_idx[non_bg_idx]
+        cluster_labels = cluster_labels[non_bg_idx]
+        # display_pcd_segmentation(non_bg_pcd, cluster_labels)
 
-        # The object pcd should be the cluster with the lowest z
-        non_bg_min_z = np.asarray(non_bg_pcd.points)[:, 2].min()
-        obj_bottom_mask = np.asarray(non_bg_pcd.points)[:, 2] <= non_bg_min_z + 0.02
-        obj_idx_candidates, counts = np.unique(cluster_idx[obj_bottom_mask], return_counts=True)
+        # If there are multiple objects, select the ones with the most points
+        if n_objects == -1:
+            return non_bg_pcd, bg_pcd
+        else:
+            # Find the lowest z of each object
+            objects = {}
+            for i in np.unique(cluster_labels):
+                obj_mask = (np.where(cluster_labels == i)[0])
+                if len(obj_mask) < min_object_pts:
+                    continue
+                # display_inlier_outlier(non_bg_pcd, obj_mask)
+                obj_pcd = non_bg_pcd.select_by_index(obj_mask)
 
-        obj_idx = obj_idx_candidates[np.argmax(counts)]
-        obj_idx = np.where(cluster_idx == obj_idx)[0]
-        # display_inlier_outlier(non_bg_pcd, obj_idx)
-        obj_pcd = non_bg_pcd.select_by_index(obj_idx)
+                obj_min_z = np.asarray(obj_pcd.points)[:, 2].min()
+                obj_bottom_mask = (np.asarray(obj_pcd.points)[:, 2] <= obj_min_z + 0.02)
+                obj_bottom_pt_count = np.sum(obj_bottom_mask)
+
+                objects[i] = (obj_min_z, obj_bottom_pt_count)
+                # print(f"Object {i}: min_z={obj_min_z}, bottom_pt_count={obj_bottom_pt_count}")
+            
+            # Sort the objects by the min_z from low to high
+            objects = sorted(objects.items(), key=lambda x: x[1][0])
+            # print(f"Sorted objects: {objects}")
+
+            # Select the top n_objects
+            obj_idx_candidates = [x[0] for x in objects]
+            top_candidates = obj_idx_candidates[:n_objects]
+            obj_mask = np.isin(cluster_labels, top_candidates)
+            obj_mask = np.where(obj_mask)[0]
+            # display_inlier_outlier(non_bg_pcd, obj_mask)
+            obj_pcd = non_bg_pcd.select_by_index(obj_mask)
 
         return obj_pcd, bg_pcd
     

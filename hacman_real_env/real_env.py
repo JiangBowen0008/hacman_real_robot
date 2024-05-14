@@ -9,6 +9,7 @@ import cv2
 from hacman_real_env.pcd_obs_env.hacman_obs_env import HACManObsEnv
 from hacman_real_env.robot_controller import FrankaOSCController
 from hacman_real_env.utils import *
+from hacman_real_env.pcd_obs_env.utils import display_inlier_outlier
 
 from hacman.utils.transformations import to_pose_mat, transform_point_cloud, decompose_pose_mat, sample_idx
 
@@ -17,14 +18,17 @@ filedir = os.path.dirname(__file__)
 class RealEnv(gym.Env, HACManObsEnv):
     def __init__(self,
                  object_name,
+                 n_objects=1,
                  object_pcd_size=400,
                  background_pcd_size=1000,
-                 voxel_downsample_size=0.005,
+                 voxel_size=0.001,
+                 voxel_downsample_size=0.01,
                  obs_args={}, 
                  robot_args={"controller_type": "OSC_YAW"},
                  eef_offset_path="data/offset_calibration_params.npz",
                  video_style="overlay",   # overlay or zoomed
                  transform_to_obs_frame=True,
+                 registration=True,
                  allow_manual_registration=False,
                  allow_full_pcd=False,
                  symmetric_object=False,
@@ -40,7 +44,10 @@ class RealEnv(gym.Env, HACManObsEnv):
         self.action_space = gym.spaces.Box(-1, 1, (5,))
         
         HACManObsEnv.__init__(self, object_name,
+                              n_objects=n_objects,
+                              voxel_size=voxel_size,
                               voxel_downsample_size=voxel_downsample_size,
+                              registration=registration,
                               allow_manual_registration=allow_manual_registration,
                               allow_full_pcd=allow_full_pcd,
                               symmetric_object=symmetric_object,
@@ -53,7 +60,7 @@ class RealEnv(gym.Env, HACManObsEnv):
         
         # eef_offset = load_calibration_param(eef_offset_path)
         eef_offset = np.eye(4)
-        # eef_offset[0, 3] += 0.015
+        eef_offset[0, 3] -= 0.01
         # eef_offset[2, 3] += 0.003
         self.robot = FrankaOSCController(
             frame_transform=real2obs_transform,    # All the poses sent to the robot need to be transformed to the real poses
@@ -99,7 +106,7 @@ class RealEnv(gym.Env, HACManObsEnv):
         self.lifted = False
         self.grasped = False
         self.current_obs = None
-        self.robot.reset()
+        self.robot.reset(**kwargs)
         if self.record_video and len(self.frames) > 0:
             success = "success" if self.video_info["success"] else "failure"
             step_count = self.video_info["elapsed_steps"]
@@ -122,12 +129,14 @@ class RealEnv(gym.Env, HACManObsEnv):
     
     def get_obs(self):
         # Process the point cloud
-        obs = HACManObsEnv.get_obs(self)
+        # Clip the object pcd using the gripper pose
+        gripper_pos = self.robot.eef_pose[:3, 3]
+        gripper_clip_z = gripper_pos[2] + 0.075
+        obs = HACManObsEnv.get_obs(self, 
+                                   clip_gripper_pcd=gripper_clip_z)
+
         object_pcd = obs['object_pcd_o3d']
         background_pcd = obs['background_pcd_o3d']
-
-        # Additionally clip the object pcd using the gripper pose
-        object_pcd = self._clip_gripper_pcd(object_pcd)
 
         # Convert to numpys
         object_pcd_points = np.asarray(object_pcd.points)
@@ -198,18 +207,6 @@ class RealEnv(gym.Env, HACManObsEnv):
 
         return obs, reward, success, info
     
-    def _clip_gripper_pcd(self, pcd):
-        # Clip the object pcd using the gripper pose
-        gripper_pos = self.robot.eef_pose[:3, 3]
-        gripper_base_z = gripper_pos[2] + 0.075
-        
-        # Any points above the gripper base z is clipped
-        pcd_points_z = np.asarray(pcd.points)[:, 2]
-        clip_mask = np.where(pcd_points_z > gripper_base_z)[0]
-        pcd = pcd.select_by_index(clip_mask, invert=True)
-
-        return pcd
-    
     def get_primitive_states(self):
         return {
             "is_lifted": self.lifted,
@@ -262,9 +259,9 @@ class RealEnv(gym.Env, HACManObsEnv):
     def get_segmentation_ids(self):
         return {"object_ids": [1], "background_ids": [0]}
     
-    def start_video_record(self, cam_id=2, video_info={}):
+    def start_video_record(self, video_info={}):
         if self.record_video:
-            super().start_video_record(cam_id)
+            super().start_video_record()
             self.video_info.update(video_info)
     
     def end_video_record(self):
@@ -344,7 +341,14 @@ def test_move_to_point(object_name):
         env.step(target_pos)
 
 def test_main(object_name):
-    env = RealEnv(object_name=object_name)
+    env = RealEnv(
+        voxel_size=0.001,
+        voxel_downsample_size=0.001,
+        registration=False,
+        background_pcd_size=10000,
+        object_pcd_size=5000,
+        object_name=object_name,
+        n_objects=1)
     obs = env.reset()
 
     object_pcd_points = obs['object_pcd_points']
@@ -385,7 +389,9 @@ def test_main(object_name):
     for i in picked_points:
         target_pos = np.asarray(pcd.points)[i]
         # Move to the target position
-        gripper_target_pos = target_pos + np.array([0, 0, 0.08])
+        gripper_target_pos = target_pos + np.array([0, 0, 0.2])
+        env.step(gripper_target_pos)
+        gripper_target_pos = target_pos + np.array([0, 0, 0.04])
         env.step(gripper_target_pos)
         env.step(target_pos)
 
