@@ -66,6 +66,39 @@ This script solves the correspondence between tag in robot base (world frame) an
 
 If you have multiple cameras and you need to align them together, see `hacman_real_env/pcd_obs_env/debug_pcd_processing.ipynb` for detailed instructions.
 
+#### Post-processing of Individual PCD
+
+The first section of the ipynb is for testing parameters on post-processing PCD obs from each camera, e.g. downsampling, outlier removal.
+
+#### Aligning multiple cameras
+
+The second section of the ipynb is for aligning PCDs recorded by multiple cameras together using ICP.
+
+**Notice:** When running this part of the code, make sure there are enough objects inside the observable workspace so that there are enough geometries for the ICP algorithm to align.
+
+Below is the visualization of this procedure:
+
+1. Place "enough objects inside the observable workspace":
+![worksapce setup](doc/alignment-setup.png)
+
+2. Before camera-alignment:
+![pre-alignment](doc/pre-alignment.png)
+
+3. After camera-alignment:
+![post-alignment](doc/post-alignment.png)
+![post-alignment2](doc/post-alignment2.png)
+
+
+### Verfication
+
+To visually verify the calibration and alignment results, run `hacman_real_env/pcd_obs_env/pcd_obs_env.py`. You will be able to see a visualization of the combined pcd together with the coordinates of the origin and the estimated cameras poses of your setup.
+
+Example:
+![verification](doc/verification.png)
+
+
+
+
 
 
 

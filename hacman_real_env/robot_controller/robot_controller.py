@@ -339,15 +339,15 @@ if __name__ == "__main__":
     #     -0.0136721,
     #     2.03815885,
     #     0.25261351]
-    reset_joint_positions = [
-        0.09162008114028396,
-        -0.19826458111314524,
-        -0.01990020486871322,
-        -2.4732269941140346,
-        -0.01307073642274261,
-        2.30396583422025,
-        0.8480939705504309,
-    ]
+    # reset_joint_positions = [
+    #     0.09162008114028396,
+    #     -0.19826458111314524,
+    #     -0.01990020486871322,
+    #     -2.4732269941140346,
+    #     -0.01307073642274261,
+    #     2.30396583422025,
+    #     0.8480939705504309,
+    # ]
     # reset_joint_positions = [
     #     0.0,
     #     0.0,
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     #     0.0,
     #     0.0,
     # ]
-    controller.reset(joint_positions=reset_joint_positions)
+    # controller.reset(joint_positions=reset_joint_positions)
     # controller.move_to(np.array([0.45, -0.3, 0.25]), 
     #                    target_quat=np.array([ 0.7071068, -0.7071068, 0, 0 ]),
     #                    target_delta_axis_angle=np.array([0, 0, 0]),
@@ -369,11 +369,11 @@ if __name__ == "__main__":
     #                    num_steps=40, num_additional_steps=10)
     logger.debug("Final movement finished")
     # print(controller.robot_interface.last_q)
-    eef_pose = controller.eef_pose
+    # eef_pose = controller.eef_pose
     joint_positions = controller.robot_interface.last_q
     # print(eef_pose)
     # hand_pose, tag_pose = estimate_tag_pose(eef_pose)
-    print(f"eef pos: {eef_pose[:3, 3]}")
+    # print(f"eef pos: {eef_pose[:3, 3]}")
     # print(f"hand pos: {hand_pose[:3, 3]}")
     # print(f"Tag pos: {tag_pose[:3, 3]}")
 
