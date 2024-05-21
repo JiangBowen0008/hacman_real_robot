@@ -79,14 +79,20 @@ The second section of the ipynb is for aligning PCDs recorded by multiple camera
 Below is the visualization of this procedure:
 
 1. Place "enough objects inside the observable workspace":
-![worksapce setup](doc/alignment-setup.png)
+<p align="center">
+  <img src="doc/alignment-setup.png" width="500">
+</p>
 
 2. Before camera-alignment:
-![pre-alignment](doc/pre-alignment.png)
+<p align="center">
+  <img src="doc/pre-alignment.png" width="500">
+</p>
 
 3. After camera-alignment:
-![post-alignment](doc/post-alignment.png)
-![post-alignment2](doc/post-alignment2.png)
+<p align="center">
+  <img src="doc/post-alignment.png" width="500">
+  <img src="doc/post-alignment2.png" width="500">
+</p>
 
 
 ### Verfication
@@ -94,7 +100,10 @@ Below is the visualization of this procedure:
 To visually verify the calibration and alignment results, run `hacman_real_env/pcd_obs_env/pcd_obs_env.py`. You will be able to see a visualization of the combined pcd together with the coordinates of the origin and the estimated cameras poses of your setup.
 
 Example:
-![verification](doc/verification.png)
+<p align="center">
+  <img src="doc/verification.png" width="500">
+</p>
+
 
 
 
